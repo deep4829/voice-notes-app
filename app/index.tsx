@@ -18,6 +18,7 @@ import { Mic, Square, Play, Pause, Trash2, Star } from "lucide-react-native";
 import { useNotes } from "@/contexts/NotesContext";
 import { Note } from "@/types/note";
 import { setupAudioSession, requestAudioPermissions, registerBackgroundRecordingTask } from "@/utils/backgroundRecording";
+import { initializeFirebase } from "@/utils/firebaseConfig";
 import { generateTags } from "@/utils/tagging";
 import { queueAudioForUpload, registerBackgroundUploadTask } from "@/utils/backgroundUpload";
 import { initializeNetworkMonitoring, useNetworkStatus } from "@/utils/networkResilience";
@@ -141,7 +142,10 @@ export default function HomeScreen() {
       // Initialize network monitoring for resilience
       await initializeNetworkMonitoring();
 
-      console.log("Audio setup complete with background recording, upload, network resilience, and caching enabled");
+      // Initialize Firebase for cloud storage
+      await initializeFirebase();
+
+      console.log("Audio setup complete with background recording, cloud upload, network resilience, and caching enabled");
     } catch (error) {
       console.error("Failed to setup audio:", error);
     }

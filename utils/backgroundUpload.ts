@@ -90,7 +90,7 @@ export const updateUploadStatus = async (
 };
 
 /**
- * Upload audio file to backend with network resilience
+ * Upload audio file to Firebase Cloud Storage
  */
 const uploadAudioFile = async (uploadTask: UploadTask): Promise<boolean> => {
   try {
@@ -103,31 +103,27 @@ const uploadAudioFile = async (uploadTask: UploadTask): Promise<boolean> => {
       return false;
     }
 
-    // Prepare upload data
+    // Prepare upload to Firebase
     const prepareUpload = async () => {
-      const formData = new FormData();
-      formData.append('noteId', noteId);
-      formData.append('audio', {
-        uri: audioUri,
-        type: 'audio/m4a',
-        name: `${noteId}.m4a`,
-      } as any);
-
-      const uploadUrl = process.env.EXPO_PUBLIC_UPLOAD_URL || 'http://localhost:3000/api/notes/upload';
-
-      const response = await fetch(uploadUrl, {
-        method: 'POST',
-        body: formData,
-        headers: {
-          'Accept': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Upload failed with status ${response.status}`);
+      const { uploadAudioToCloud, isFirebaseReady } = await import('./firebaseConfig');
+      
+      // Check if Firebase is ready
+      if (!isFirebaseReady()) {
+        throw new Error('Firebase not ready - will retry when online');
       }
 
-      return await response.json();
+      const fileName = `${noteId}.m4a`;
+      const storagePath = await uploadAudioToCloud(audioUri, noteId, fileName);
+      
+      if (!storagePath) {
+        throw new Error('Firebase upload returned null path');
+      }
+
+      return {
+        url: storagePath,
+        platform: 'firebase',
+        uploadedAt: Date.now(),
+      };
     };
 
     // Use network resilience wrapper for upload
@@ -137,13 +133,18 @@ const uploadAudioFile = async (uploadTask: UploadTask): Promise<boolean> => {
       `Upload audio for note ${noteId}`
     );
 
+    if (!result) {
+      console.log('[BG Upload] Upload skipped (offline or Firebase unavailable, will retry later)');
+      return false;
+    }
+
     console.log('[BG Upload] Upload successful:', result);
 
     // Store upload metadata
     await storeUploadProgress(noteId, {
       uploadedAt: Date.now(),
-      uploadUrl: result.url,
-      transcriptionId: result.transcriptionId,
+      storagePath: result.url,
+      platform: 'firebase',
     });
 
     return true;
