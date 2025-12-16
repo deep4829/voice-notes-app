@@ -64,7 +64,7 @@ export const getUploadQueue = async (): Promise<UploadTask[]> => {
 /**
  * Update upload task status
  */
-const updateUploadStatus = async (
+export const updateUploadStatus = async (
   uploadId: string,
   status: UploadTask['status']
 ): Promise<void> => {
@@ -84,8 +84,7 @@ const updateUploadStatus = async (
 };
 
 /**
- * Upload audio file to backend
- * Implement your actual upload logic here
+ * Upload audio file to backend with network resilience
  */
 const uploadAudioFile = async (uploadTask: UploadTask): Promise<boolean> => {
   try {
@@ -98,31 +97,40 @@ const uploadAudioFile = async (uploadTask: UploadTask): Promise<boolean> => {
       return false;
     }
 
-    // Example: Upload to your backend API
-    // This is a placeholder - replace with your actual endpoint
-    const formData = new FormData();
-    formData.append('noteId', noteId);
-    formData.append('audio', {
-      uri: audioUri,
-      type: 'audio/m4a',
-      name: `${noteId}.m4a`,
-    } as any);
+    // Prepare upload data
+    const prepareUpload = async () => {
+      const formData = new FormData();
+      formData.append('noteId', noteId);
+      formData.append('audio', {
+        uri: audioUri,
+        type: 'audio/m4a',
+        name: `${noteId}.m4a`,
+      } as any);
 
-    const uploadUrl = process.env.EXPO_PUBLIC_UPLOAD_URL || 'http://localhost:3000/api/notes/upload';
+      const uploadUrl = process.env.EXPO_PUBLIC_UPLOAD_URL || 'http://localhost:3000/api/notes/upload';
 
-    const response = await fetch(uploadUrl, {
-      method: 'POST',
-      body: formData,
-      headers: {
-        'Accept': 'application/json',
-      },
-    });
+      const response = await fetch(uploadUrl, {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'Accept': 'application/json',
+        },
+      });
 
-    if (!response.ok) {
-      throw new Error(`Upload failed with status ${response.status}`);
-    }
+      if (!response.ok) {
+        throw new Error(`Upload failed with status ${response.status}`);
+      }
 
-    const result = await response.json();
+      return await response.json();
+    };
+
+    // Use network resilience wrapper for upload
+    const { withNetworkResilience } = await import('./networkResilience');
+    const result = await withNetworkResilience(
+      prepareUpload,
+      `Upload audio for note ${noteId}`
+    );
+
     console.log('[BG Upload] Upload successful:', result);
 
     // Store upload metadata

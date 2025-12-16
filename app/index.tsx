@@ -20,11 +20,13 @@ import { Note } from "@/types/note";
 import { setupAudioSession, requestAudioPermissions, registerBackgroundRecordingTask } from "@/utils/backgroundRecording";
 import { generateTags } from "@/utils/tagging";
 import { queueAudioForUpload, registerBackgroundUploadTask } from "@/utils/backgroundUpload";
+import { initializeNetworkMonitoring, useNetworkStatus } from "@/utils/networkResilience";
 
 
 
 export default function HomeScreen() {
   const { notes, addNote, deleteNote, updateNote, isLoading } = useNotes();
+  const { isConnected, networkType } = useNetworkStatus();
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
@@ -121,8 +123,11 @@ export default function HomeScreen() {
       
       // Register background upload task
       registerBackgroundUploadTask();
+      
+      // Initialize network monitoring for resilience
+      await initializeNetworkMonitoring();
 
-      console.log("Audio setup complete with background recording and upload enabled");
+      console.log("Audio setup complete with background recording, upload, and network resilience enabled");
     } catch (error) {
       console.error("Failed to setup audio:", error);
     }
@@ -390,10 +395,19 @@ export default function HomeScreen() {
     <View style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Voice Notes</Text>
-          <Text style={styles.headerSubtitle}>
-            {notes.length} {notes.length === 1 ? "note" : "notes"}
-          </Text>
+          <View style={styles.headerTop}>
+            <View>
+              <Text style={styles.headerTitle}>Voice Notes</Text>
+              <Text style={styles.headerSubtitle}>
+                {notes.length} {notes.length === 1 ? "note" : "notes"}
+              </Text>
+            </View>
+            <View style={[styles.networkStatus, { backgroundColor: isConnected ? '#10B981' : '#EF4444' }]}>
+              <Text style={styles.networkStatusText}>
+                {isConnected ? '●' : '●'}
+              </Text>
+            </View>
+          </View>
         </View>
 
         {/* Search Bar */}
@@ -632,6 +646,11 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     paddingBottom: 24,
   },
+  headerTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+  },
   headerTitle: {
     fontSize: 36,
     fontWeight: "700",
@@ -641,6 +660,17 @@ const styles = StyleSheet.create({
   headerSubtitle: {
     fontSize: 16,
     color: "#94A3B8",
+  },
+  networkStatus: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginTop: 8,
+  },
+  networkStatusText: {
+    fontSize: 12,
+    fontWeight: "bold",
+    color: "#FFFFFF",
   },
   scrollView: {
     flex: 1,
