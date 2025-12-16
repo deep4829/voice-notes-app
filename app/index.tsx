@@ -22,6 +22,8 @@ import { generateTags } from "@/utils/tagging";
 import { queueAudioForUpload, registerBackgroundUploadTask } from "@/utils/backgroundUpload";
 import { initializeNetworkMonitoring, useNetworkStatus } from "@/utils/networkResilience";
 import { initializeCache, getCachedAudioPath } from "@/utils/cacheManager";
+import { createSmartFolders, getNotesInFolder, getFolderBreadcrumb } from "@/utils/smartFolders";
+import type { SmartFolder, FolderStructure } from "@/utils/smartFolders";
 
 
 
@@ -42,6 +44,11 @@ export default function HomeScreen() {
   const [pendingTranscription, setPendingTranscription] = useState('');
   const [pendingLanguage, setPendingLanguage] = useState('');
   const [expandedNoteId, setExpandedNoteId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'all' | 'folders'>('all');
+  const [selectedFolder, setSelectedFolder] = useState<SmartFolder | null>(null);
+
+  // Compute smart folders structure
+  const folderStructure: FolderStructure = viewMode === 'folders' ? createSmartFolders(notes) : { folders: [], ungrouped: [], folderMap: {} };
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const waveAnimations = useRef(
@@ -453,7 +460,10 @@ export default function HomeScreen() {
             <TouchableOpacity
               key={tab}
               style={[styles.tab, selectedTab === tab && styles.tabActive]}
-              onPress={() => setSelectedTab(tab)}
+              onPress={() => {
+                setSelectedTab(tab);
+                setSelectedFolder(null);
+              }}
             >
               <Text
                 style={[
@@ -465,6 +475,22 @@ export default function HomeScreen() {
               </Text>
             </TouchableOpacity>
           ))}
+          <TouchableOpacity
+            style={[styles.tab, viewMode === 'folders' && styles.tabActive]}
+            onPress={() => {
+              setViewMode(viewMode === 'folders' ? 'all' : 'folders');
+              setSelectedFolder(null);
+            }}
+          >
+            <Text
+              style={[
+                styles.tabText,
+                viewMode === 'folders' && styles.tabTextActive,
+              ]}
+            >
+              📁 Folders
+            </Text>
+          </TouchableOpacity>
         </View>
 
         <ScrollView
@@ -476,6 +502,152 @@ export default function HomeScreen() {
             <View style={styles.emptyState}>
               <Text style={styles.emptyText}>Loading...</Text>
             </View>
+          ) : viewMode === 'folders' ? (
+            // Folder view
+            selectedFolder ? (
+              <>
+                {/* Folder header with back button */}
+                <TouchableOpacity
+                  style={styles.folderBackButton}
+                  onPress={() => setSelectedFolder(null)}
+                >
+                  <Text style={styles.folderBackText}>← Back to Folders</Text>
+                </TouchableOpacity>
+                
+                <View style={[styles.folderHeader, { backgroundColor: selectedFolder.color + '20' }]}>
+                  <Text style={styles.folderTitle}>{selectedFolder.name}</Text>
+                  <Text style={styles.folderSubtitle}>
+                    {selectedFolder.notesCount} {selectedFolder.notesCount === 1 ? 'note' : 'notes'}
+                  </Text>
+                </View>
+
+                {getNotesInFolder(notes, selectedFolder).length === 0 ? (
+                  <View style={styles.emptyState}>
+                    <Text style={styles.emptyText}>No notes in this folder</Text>
+                  </View>
+                ) : (
+                  getNotesInFolder(notes, selectedFolder).map((note: Note) => (
+                    <View key={note.id} style={styles.noteCard}>
+                      <View style={styles.noteHeader}>
+                        <View>
+                          {note.title && (
+                            <Text style={styles.noteTitle}>{note.title}</Text>
+                          )}
+                          <Text style={styles.noteDate}>{formatDate(note.createdAt)}</Text>
+                        </View>
+                        <View style={styles.noteActions}>
+                          <TouchableOpacity
+                            onPress={() => {
+                              const isFavorite = (note as any).isFavorite;
+                              updateNote(note.id, { isFavorite: !isFavorite } as any);
+                            }}
+                          >
+                            <Star
+                              size={20}
+                              color={(note as any).isFavorite ? '#0EA5E9' : '#64748B'}
+                              fill={(note as any).isFavorite ? '#0EA5E9' : 'none'}
+                            />
+                          </TouchableOpacity>
+                          <TouchableOpacity onPress={() => deleteNote(note.id)}>
+                            <Trash2 size={20} color="#64748B" />
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                      
+                      {/* Render rest of note content similar to filteredNotes */}
+                      <Text
+                        style={styles.noteTranscription}
+                        numberOfLines={expandedNoteId === note.id ? undefined : 3}
+                      >
+                        {note.transcription}
+                      </Text>
+
+                      {note.transcription.split('\n').length > 3 && expandedNoteId !== note.id && (
+                        <TouchableOpacity onPress={() => setExpandedNoteId(note.id)}>
+                          <Text style={styles.seeMoreText}>See More</Text>
+                        </TouchableOpacity>
+                      )}
+
+                      {expandedNoteId === note.id && note.transcription.split('\n').length > 3 && (
+                        <TouchableOpacity onPress={() => setExpandedNoteId(null)}>
+                          <Text style={styles.seeLessText}>See Less</Text>
+                        </TouchableOpacity>
+                      )}
+
+                      {note.tags && note.tags.length > 0 && (
+                        <View style={styles.tagsContainer}>
+                          {note.tags.map((tag, index) => (
+                            <View key={index} style={styles.tag}>
+                              <Text style={styles.tagText}>#{tag}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      )}
+
+                      <View style={styles.noteFooter}>
+                        <Text style={styles.noteDuration}>{formatDuration(note.duration)}</Text>
+                        <Text style={styles.noteLanguage}>{note.language}</Text>
+                      </View>
+
+                      {/* Playback controls */}
+                      <View style={styles.playbackContainer}>
+                        {playingNoteId === note.id ? (
+                          <TouchableOpacity onPress={pauseAudio} style={styles.playButton}>
+                            <Pause size={20} color="#FFFFFF" fill="#FFFFFF" />
+                          </TouchableOpacity>
+                        ) : (
+                          <TouchableOpacity onPress={() => playAudio(note)} style={styles.playButton}>
+                            <Play size={20} color="#FFFFFF" fill="#FFFFFF" />
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </View>
+                  ))
+                )}
+              </>
+            ) : (
+              // Folder list view
+              folderStructure.folders.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <Mic size={48} color="#CBD5E1" />
+                  <Text style={styles.emptyText}>No folders yet</Text>
+                  <Text style={styles.emptySubtext}>Notes with tags will appear here</Text>
+                </View>
+              ) : (
+                <>
+                  {folderStructure.folders.map((folder) => (
+                    <TouchableOpacity
+                      key={folder.id}
+                      style={[styles.folderCard, { borderLeftColor: folder.color, borderLeftWidth: 4 }]}
+                      onPress={() => setSelectedFolder(folder)}
+                    >
+                      <View style={styles.folderCardContent}>
+                        <View>
+                          <Text style={styles.folderCardName}>{folder.name}</Text>
+                          <Text style={styles.folderCardDescription}>{folder.description}</Text>
+                        </View>
+                        <View style={styles.folderCardBadge}>
+                          <Text style={styles.folderCardBadgeText}>{folder.notesCount}</Text>
+                        </View>
+                      </View>
+                      {folder.subFolders && folder.subFolders.length > 0 && (
+                        <Text style={styles.folderCardSubtext}>
+                          {folder.subFolders.length} subfolder{folder.subFolders.length !== 1 ? 's' : ''}
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                  {folderStructure.ungrouped.length > 0 && (
+                    <View style={styles.folderCard}>
+                      <Text style={styles.folderCardName}>📌 Ungrouped</Text>
+                      <Text style={styles.folderCardDescription}>
+                        {folderStructure.ungrouped.length} note{folderStructure.ungrouped.length !== 1 ? 's' : ''} without tags
+                      </Text>
+                    </View>
+                  )}
+                </>
+              )
+            )
           ) : filteredNotes.length === 0 ? (
             <View style={styles.emptyState}>
               <Mic size={48} color="#CBD5E1" />
@@ -964,5 +1136,80 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 12,
     fontWeight: "500",
+  },
+  folderBackButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 0,
+    marginBottom: 16,
+  },
+  folderBackText: {
+    color: "#0EA5E9",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  folderHeader: {
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  folderTitle: {
+    fontSize: 24,
+    fontWeight: "700",
+    color: "#FFFFFF",
+    marginBottom: 4,
+  },
+  folderSubtitle: {
+    fontSize: 14,
+    color: "#94A3B8",
+  },
+  folderCard: {
+    backgroundColor: "#1E293B",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+  },
+  folderCardContent: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+  },
+  folderCardName: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#FFFFFF",
+    marginBottom: 6,
+  },
+  folderCardDescription: {
+    fontSize: 13,
+    color: "#94A3B8",
+  },
+  folderCardSubtext: {
+    fontSize: 12,
+    color: "#64748B",
+    marginTop: 8,
+  },
+  folderCardBadge: {
+    backgroundColor: "#0EA5E9",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  folderCardBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  playbackContainer: {
+    marginTop: 12,
+    alignItems: "flex-start",
+  },
+  playButton: {
+    backgroundColor: "#0EA5E9",
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: "center",
+    alignItems: "center",
   },
 });
