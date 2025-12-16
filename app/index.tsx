@@ -25,6 +25,7 @@ import { initializeCache, getCachedAudioPath } from "@/utils/cacheManager";
 import { createSmartFolders, getNotesInFolder, getFolderBreadcrumb } from "@/utils/smartFolders";
 import type { SmartFolder, FolderStructure } from "@/utils/smartFolders";
 import { semanticSearch } from "@/utils/semanticSearch";
+import { generateSummary } from "@/utils/summarization";
 
 
 
@@ -274,6 +275,9 @@ export default function HomeScreen() {
 
     // Generate automatic tags from transcription
     const tags = generateTags(pendingTranscription);
+    
+    // Generate summary from transcription
+    const summaryInfo = generateSummary(pendingTranscription, 2);
 
     const noteId = Date.now().toString();
     const newNote: Note = {
@@ -285,6 +289,7 @@ export default function HomeScreen() {
       createdAt: Date.now(),
       language: pendingLanguage,
       tags: tags,
+      summary: summaryInfo.summary,
     };
 
     addNote(newNote);
@@ -553,11 +558,16 @@ export default function HomeScreen() {
                   getNotesInFolder(notes, selectedFolder).map((note: Note) => (
                     <View key={note.id} style={styles.noteCard}>
                       <View style={styles.noteHeader}>
-                        <View>
+                        <View style={{ flex: 1 }}>
                           {note.title && (
                             <Text style={styles.noteTitle}>{note.title}</Text>
                           )}
                           <Text style={styles.noteDate}>{formatDate(note.createdAt)}</Text>
+                          {note.summary && (
+                            <Text style={styles.noteSummary} numberOfLines={2}>
+                              {note.summary}
+                            </Text>
+                          )}
                         </View>
                         <View style={styles.noteActions}>
                           <TouchableOpacity
@@ -686,11 +696,16 @@ export default function HomeScreen() {
             filteredNotes.map((note: Note) => (
               <View key={note.id} style={styles.noteCard}>
                 <View style={styles.noteHeader}>
-                  <View>
+                  <View style={{ flex: 1 }}>
                     {note.title && (
                       <Text style={styles.noteTitle}>{note.title}</Text>
                     )}
                     <Text style={styles.noteDate}>{formatDate(note.createdAt)}</Text>
+                    {note.summary && (
+                      <Text style={styles.noteSummary} numberOfLines={2}>
+                        {note.summary}
+                      </Text>
+                    )}
                   </View>
                   <View style={styles.noteActions}>
                     <TouchableOpacity
@@ -945,6 +960,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#94A3B8",
     fontWeight: "500",
+    marginBottom: 6,
+  },
+  noteSummary: {
+    fontSize: 13,
+    color: "#CBD5E1",
+    fontStyle: "italic",
+    lineHeight: 18,
+    marginBottom: 6,
   },
   noteActions: {
     flexDirection: "row",

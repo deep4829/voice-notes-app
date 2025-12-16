@@ -127,16 +127,6 @@ export const resumeFailedUploads = async (): Promise<void> => {
     console.error('[Network] Error resuming uploads:', error);
   }
 };
-      await updateUploadStatus(task.id, 'pending');
-    }
-
-    // Trigger immediate upload processing
-    const { processUploadQueue } = await import('./backgroundUpload');
-    await processUploadQueue();
-  } catch (error) {
-    console.error('[Network] Error resuming uploads:', error);
-  }
-};
 
 /**
  * React Hook for network monitoring
