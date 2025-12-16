@@ -8,14 +8,20 @@ import { getAuth, signInAnonymously } from 'firebase/auth';
  * 
  * Note: This config is exposed (public keys are meant to be public)
  * Security is managed via Firebase Security Rules
+ * 
+ * To set up Firebase:
+ * 1. Go to https://console.firebase.google.com
+ * 2. Create a new project (free tier)
+ * 3. Create a web app in the project
+ * 4. Copy the config and add to .env file
  */
 const firebaseConfig = {
-  apiKey: 'AIzaSyDkL_1q8V2nH3pX5mZ9kL2mN4oP6qR7sT8u',
-  authDomain: 'verbalnote-app.firebaseapp.com',
-  projectId: 'verbalnote-app',
-  storageBucket: 'verbalnote-app.appspot.com',
-  messagingSenderId: '123456789012',
-  appId: '1:123456789012:web:abcdef1234567890',
+  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY || '',
+  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN || '',
+  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID || '',
+  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET || '',
+  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || '',
+  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID || '',
 };
 
 let firebaseApp: any = null;
@@ -31,6 +37,12 @@ export const initializeFirebase = async (): Promise<void> => {
       return;
     }
 
+    // Check if Firebase config is provided
+    if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
+      console.warn('[Firebase] Configuration not provided - set env vars for cloud storage. See .env.example');
+      return;
+    }
+
     // Initialize Firebase
     firebaseApp = initializeApp(firebaseConfig);
     console.log('[Firebase] App initialized');
@@ -41,7 +53,7 @@ export const initializeFirebase = async (): Promise<void> => {
     isAuthenticated = true;
     console.log('[Firebase] Anonymous authentication successful');
   } catch (error) {
-    console.error('[Firebase] Initialization error:', error);
+    console.warn('[Firebase] Initialization warning (local cache still works):', error);
     // Firebase initialization failure is non-critical - local cache still works
   }
 };
