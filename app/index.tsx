@@ -20,6 +20,8 @@ import { Note } from "@/types/note";
 import { setupAudioSession, requestAudioPermissions, registerBackgroundRecordingTask } from "@/utils/backgroundRecording";
 import { initializeFirebase } from "@/utils/firebaseConfig";
 import { generateTags } from "@/utils/tagging";
+import { generateWordCloud, hasEnoughContentForWordCloud } from "@/utils/wordCloud";
+import { WordCloudView } from "@/components/WordCloudView";
 import { queueAudioForUpload, registerBackgroundUploadTask } from "@/utils/backgroundUpload";
 import { initializeNetworkMonitoring, useNetworkStatus } from "@/utils/networkResilience";
 import { initializeCache, getCachedAudioPath } from "@/utils/cacheManager";
@@ -613,6 +615,11 @@ export default function HomeScreen() {
                         </TouchableOpacity>
                       )}
 
+                      {/* Word Cloud for expanded notes */}
+                      {expandedNoteId === note.id && hasEnoughContentForWordCloud(note.transcription) && (
+                        <WordCloudView wordCloudData={generateWordCloud(note.transcription, 25)} />
+                      )}
+
                       {note.tags && note.tags.length > 0 && (
                         <View style={styles.tagsContainer}>
                           {note.tags.map((tag, index) => (
@@ -762,6 +769,10 @@ export default function HomeScreen() {
                   <TouchableOpacity onPress={() => setExpandedNoteId(null)}>
                     <Text style={styles.seeLessText}>See Less</Text>
                   </TouchableOpacity>
+                )}
+                {/* Word Cloud for expanded notes */}
+                {expandedNoteId === note.id && hasEnoughContentForWordCloud(note.transcription) && (
+                  <WordCloudView wordCloudData={generateWordCloud(note.transcription, 25)} />
                 )}
                 {note.tags && note.tags.length > 0 && (
                   <View style={styles.tagsContainer}>
