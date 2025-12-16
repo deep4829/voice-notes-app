@@ -19,6 +19,7 @@ import { useNotes } from "@/contexts/NotesContext";
 import { Note } from "@/types/note";
 import { setupAudioSession, requestAudioPermissions, registerBackgroundRecordingTask } from "@/utils/backgroundRecording";
 import { generateTags } from "@/utils/tagging";
+import { queueAudioForUpload, registerBackgroundUploadTask } from "@/utils/backgroundUpload";
 
 
 
@@ -117,8 +118,11 @@ export default function HomeScreen() {
 
       // Register background task handlers
       registerBackgroundRecordingTask();
+      
+      // Register background upload task
+      registerBackgroundUploadTask();
 
-      console.log("Audio setup complete with background recording enabled");
+      console.log("Audio setup complete with background recording and upload enabled");
     } catch (error) {
       console.error("Failed to setup audio:", error);
     }
@@ -239,7 +243,7 @@ export default function HomeScreen() {
     }
   };
 
-  const saveTitleAndNote = () => {
+  const saveTitleAndNote = async () => {
     if (!titleInput.trim()) {
       Alert.alert("Error", "Please enter a title");
       return;
@@ -253,8 +257,9 @@ export default function HomeScreen() {
     // Generate automatic tags from transcription
     const tags = generateTags(pendingTranscription);
 
+    const noteId = Date.now().toString();
     const newNote: Note = {
-      id: Date.now().toString(),
+      id: noteId,
       title: titleInput.trim(),
       transcription: pendingTranscription,
       audioUri: pendingRecordingUri,
@@ -265,6 +270,15 @@ export default function HomeScreen() {
     };
 
     addNote(newNote);
+    
+    // Queue audio for background upload
+    try {
+      await queueAudioForUpload(noteId, pendingRecordingUri);
+      console.log('[Save] Audio queued for background upload:', noteId);
+    } catch (error) {
+      console.error('[Save] Error queuing audio for upload:', error);
+    }
+    
     setShowTitleInput(false);
     setTitleInput('');
     setPendingRecordingUri(null);
