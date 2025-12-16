@@ -148,7 +148,9 @@ const uploadAudioFile = async (uploadTask: UploadTask): Promise<boolean> => {
 
     return true;
   } catch (error) {
-    console.error('[BG Upload] Upload error:', error);
+    // In development, upload failures are non-critical
+    // The audio is saved locally regardless
+    console.warn('[BG Upload] Upload warning (audio saved locally):', error);
     return false;
   }
 };

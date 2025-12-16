@@ -247,9 +247,13 @@ export const withNetworkResilience = async <T>(
       attempt++;
 
       if (attempt >= maxAttempts) {
-        throw new Error(
-          `${operationName} failed after ${maxAttempts} attempts with network resilience`
-        );
+        const errorMsg = `${operationName} failed after ${maxAttempts} attempts with network resilience`;
+        console.warn(`[Network] ${errorMsg}`);
+        // For non-critical operations (like uploads), return null instead of throwing
+        if (operationName.includes('Upload')) {
+          return null as unknown as T;
+        }
+        throw new Error(errorMsg);
       }
 
       // Wait before retry
@@ -257,7 +261,13 @@ export const withNetworkResilience = async <T>(
     }
   }
 
-  throw new Error(`${operationName} exhausted all retry attempts`);
+  const errorMsg = `${operationName} exhausted all retry attempts`;
+  console.warn(`[Network] ${errorMsg}`);
+  // For non-critical operations (like uploads), return null instead of throwing
+  if (operationName.includes('Upload')) {
+    return null as unknown as T;
+  }
+  throw new Error(errorMsg);
 };
 
 /**

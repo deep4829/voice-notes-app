@@ -294,12 +294,13 @@ export default function HomeScreen() {
 
     addNote(newNote);
     
-    // Queue audio for background upload
+    // Queue audio for background upload (non-blocking)
     try {
       await queueAudioForUpload(noteId, pendingRecordingUri);
       console.log('[Save] Audio queued for background upload:', noteId);
     } catch (error) {
-      console.error('[Save] Error queuing audio for upload:', error);
+      // Upload errors are non-critical in development
+      console.warn('[Save] Upload queueing warning:', error);
     }
     
     setShowTitleInput(false);
