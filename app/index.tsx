@@ -24,6 +24,7 @@ import { initializeNetworkMonitoring, useNetworkStatus } from "@/utils/networkRe
 import { initializeCache, getCachedAudioPath } from "@/utils/cacheManager";
 import { createSmartFolders, getNotesInFolder, getFolderBreadcrumb } from "@/utils/smartFolders";
 import type { SmartFolder, FolderStructure } from "@/utils/smartFolders";
+import { semanticSearch } from "@/utils/semanticSearch";
 
 
 
@@ -46,6 +47,7 @@ export default function HomeScreen() {
   const [expandedNoteId, setExpandedNoteId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'all' | 'folders'>('all');
   const [selectedFolder, setSelectedFolder] = useState<SmartFolder | null>(null);
+  const [showSearchHint, setShowSearchHint] = useState(false);
 
   // Compute smart folders structure
   const folderStructure: FolderStructure = viewMode === 'folders' ? createSmartFolders(notes) : { folders: [], ungrouped: [], folderMap: {} };
@@ -384,10 +386,18 @@ export default function HomeScreen() {
   const getFilteredNotes = () => {
     let filtered = notes;
 
-    // Search filter - check title, transcription, and tags
+    // Search filter - use semantic search for better results
     if (searchQuery.trim()) {
-      const searchLower = searchQuery.toLowerCase();
-      filtered = filtered.filter((note: Note) => {
+      const semanticResults = semanticSearch(notes, searchQuery, 0.3);
+      const semanticNoteIds = new Set(semanticResults.map(r => r.note.id));
+      
+      // Combine semantic results with keyword matching
+      filtered = notes.filter((note: Note) => {
+        // Check semantic search
+        if (semanticNoteIds.has(note.id)) return true;
+        
+        // Fallback to basic keyword matching
+        const searchLower = searchQuery.toLowerCase();
         const matchesTitle = (note.title?.toLowerCase().includes(searchLower) || false);
         const matchesTranscription = note.transcription.toLowerCase().includes(searchLower);
         const matchesTags = note.tags?.some(tag => tag.toLowerCase().includes(searchLower)) || false;
@@ -447,12 +457,26 @@ export default function HomeScreen() {
           <Text style={styles.searchIcon}>🔍</Text>
           <TextInput
             style={styles.searchInput}
-            placeholder="Search transcripts, dates..."
+            placeholder="Search transcripts, dates, or semantic queries..."
             placeholderTextColor="#64748B"
             value={searchQuery}
             onChangeText={setSearchQuery}
+            onFocus={() => setShowSearchHint(true)}
+            onBlur={() => setShowSearchHint(false)}
           />
+          {searchQuery && (
+            <View style={styles.semanticBadge}>
+              <Text style={styles.semanticBadgeText}>🧠 Semantic</Text>
+            </View>
+          )}
         </View>
+
+        {/* Search Hint */}
+        {showSearchHint && (
+          <Text style={styles.searchHint}>
+            Try: "budget", "meeting with client", "pending tasks", or "important decisions"
+          </Text>
+        )}
 
         {/* Tab Filter */}
         <View style={styles.tabContainer}>
@@ -1022,6 +1046,25 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     color: "#E2E8F0",
     fontSize: 14,
+  },
+  semanticBadge: {
+    backgroundColor: "#8B5CF6",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    marginRight: 8,
+  },
+  semanticBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  searchHint: {
+    fontSize: 12,
+    color: "#64748B",
+    paddingHorizontal: 24,
+    paddingBottom: 8,
+    fontStyle: "italic",
   },
   tabContainer: {
     flexDirection: "row",
