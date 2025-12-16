@@ -11,6 +11,7 @@ import {
 import { Audio } from 'expo-av';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Recording } from '@/types/note';
+import { setupAudioSession, startBackgroundFetch } from '@/utils/backgroundRecording';
 
 interface RecordingScreenProps {
   onSaveRecording: (recording: Omit<Recording, 'id'>) => void;
@@ -36,6 +37,10 @@ export default function RecordingScreen({ onSaveRecording }: RecordingScreenProp
 
   const startRecording = async () => {
     try {
+      // Setup audio session for background recording
+      await setupAudioSession();
+
+      // Create recording with background-enabled options
       const { recording } = await Audio.Recording.createAsync(
         Audio.RecordingOptionsPresets.HIGH_QUALITY
       );
@@ -62,6 +67,11 @@ export default function RecordingScreen({ onSaveRecording }: RecordingScreenProp
 
     try {
       await recordingRef.current?.stopAndUnloadAsync();
+      
+      // Register background tasks for processing the recording
+      // This ensures upload/transcription continues even if app is backgrounded
+      await startBackgroundFetch();
+
       const uri = recordingRef.current?.getURI();
       
       if (uri) {

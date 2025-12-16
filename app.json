@@ -18,9 +18,12 @@
       "bundleIdentifier": "app.rork.audinote-transcriber",
       "infoPlist": {
         "UIBackgroundModes": [
-          "audio"
+          "audio",
+          "fetch",
+          "processing"
         ],
-        "NSMicrophoneUsageDescription": "Allow $(PRODUCT_NAME) to access your microphone"
+        "NSMicrophoneUsageDescription": "Allow $(PRODUCT_NAME) to access your microphone",
+        "NSLocalNetworkUsageDescription": "Allow $(PRODUCT_NAME) to access your network for transcription"
       }
     },
     "android": {
@@ -30,7 +33,9 @@
       },
       "package": "app.rork.audinote_transcriber",
       "permissions": [
-        "RECORD_AUDIO"
+        "RECORD_AUDIO",
+        "WAKE_LOCK",
+        "ACCESS_NETWORK_STATE"
       ]
     },
     "web": {

@@ -17,6 +17,7 @@ import { useMutation } from "@tanstack/react-query";
 import { Mic, Square, Play, Pause, Trash2, Star } from "lucide-react-native";
 import { useNotes } from "@/contexts/NotesContext";
 import { Note } from "@/types/note";
+import { setupAudioSession, requestAudioPermissions, registerBackgroundRecordingTask } from "@/utils/backgroundRecording";
 
 
 
@@ -103,11 +104,20 @@ export default function HomeScreen() {
 
   const setupAudio = async () => {
     try {
-      await Audio.requestPermissionsAsync();
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-        playsInSilentModeIOS: true,
-      });
+      // Request audio permissions
+      const hasPermission = await requestAudioPermissions();
+      if (!hasPermission) {
+        Alert.alert("Permission Denied", "Microphone permission is required to record audio");
+        return;
+      }
+
+      // Setup audio session for background recording capability
+      await setupAudioSession();
+
+      // Register background task handlers
+      registerBackgroundRecordingTask();
+
+      console.log("Audio setup complete with background recording enabled");
     } catch (error) {
       console.error("Failed to setup audio:", error);
     }
