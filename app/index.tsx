@@ -33,6 +33,8 @@ import { analyzeVocabulary } from "@/utils/vocabularyInsights";
 import { VocabularyInsightsView } from "@/components/VocabularyInsightsView";
 import { analyzeSentiment, analyzeSentimentTrends } from "@/utils/sentimentAnalysis";
 import SentimentAnalysisView from "@/components/SentimentAnalysisView";
+import { analyzeFillerWords } from "@/utils/fillerWordRemoval";
+import FillerWordView from "@/components/FillerWordView";
 
 
 
@@ -57,6 +59,7 @@ export default function HomeScreen() {
   const [selectedFolder, setSelectedFolder] = useState<SmartFolder | null>(null);
   const [showSearchHint, setShowSearchHint] = useState(false);
   const [insightType, setInsightType] = useState<'vocabulary' | 'sentiment'>('vocabulary');
+  const [showFillerWordAnalysis, setShowFillerWordAnalysis] = useState(false);
 
   // Compute smart folders structure
   const folderStructure: FolderStructure = viewMode === 'folders' ? createSmartFolders(notes) : { folders: [], ungrouped: [], folderMap: {} };
@@ -689,6 +692,23 @@ export default function HomeScreen() {
                         <SentimentAnalysisView analysis={analyzeSentiment(note.transcription)} />
                       )}
 
+                      {/* Filler Word Analysis for expanded notes */}
+                      {expandedNoteId === note.id && (
+                        <>
+                          <TouchableOpacity
+                            style={[styles.toggleAnalysisButton, showFillerWordAnalysis && styles.toggleAnalysisButtonActive]}
+                            onPress={() => setShowFillerWordAnalysis(!showFillerWordAnalysis)}
+                          >
+                            <Text style={[styles.toggleAnalysisText, showFillerWordAnalysis && styles.toggleAnalysisTextActive]}>
+                              {showFillerWordAnalysis ? '✨ Hide' : '🎙️ Show'} Filler Word Analysis
+                            </Text>
+                          </TouchableOpacity>
+                          {showFillerWordAnalysis && (
+                            <FillerWordView analysis={analyzeFillerWords(note.transcription)} />
+                          )}
+                        </>
+                      )}
+
                       {note.tags && note.tags.length > 0 && (
                         <View style={styles.tagsContainer}>
                           {note.tags.map((tag, index) => (
@@ -846,6 +866,22 @@ export default function HomeScreen() {
                 {/* Sentiment Analysis for expanded notes */}
                 {expandedNoteId === note.id && (
                   <SentimentAnalysisView analysis={analyzeSentiment(note.transcription)} />
+                )}
+                {/* Filler Word Analysis for expanded notes */}
+                {expandedNoteId === note.id && (
+                  <>
+                    <TouchableOpacity
+                      style={[styles.toggleAnalysisButton, showFillerWordAnalysis && styles.toggleAnalysisButtonActive]}
+                      onPress={() => setShowFillerWordAnalysis(!showFillerWordAnalysis)}
+                    >
+                      <Text style={[styles.toggleAnalysisText, showFillerWordAnalysis && styles.toggleAnalysisTextActive]}>
+                        {showFillerWordAnalysis ? '✨ Hide' : '🎙️ Show'} Filler Word Analysis
+                      </Text>
+                    </TouchableOpacity>
+                    {showFillerWordAnalysis && (
+                      <FillerWordView analysis={analyzeFillerWords(note.transcription)} />
+                    )}
+                  </>
                 )}
                 {note.tags && note.tags.length > 0 && (
                   <View style={styles.tagsContainer}>
@@ -1402,6 +1438,30 @@ const styles = StyleSheet.create({
     color: "#94A3B8",
   },
   insightToggleTextActive: {
+    color: "#FFFFFF",
+  },
+  toggleAnalysisButton: {
+    marginVertical: 12,
+    marginHorizontal: 0,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    backgroundColor: "#2D3748",
+    borderWidth: 2,
+    borderColor: "transparent",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  toggleAnalysisButtonActive: {
+    backgroundColor: "#7C3AED",
+    borderColor: "#A78BFA",
+  },
+  toggleAnalysisText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#94A3B8",
+  },
+  toggleAnalysisTextActive: {
     color: "#FFFFFF",
   },
 });
