@@ -2,11 +2,17 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as TaskManager from 'expo-task-manager';
 import * as BackgroundFetch from 'expo-background-fetch';
-import { v4 as uuidv4 } from 'uuid';
 
 const BACKGROUND_UPLOAD_TASK = 'background-upload-task';
 const UPLOAD_QUEUE_KEY = 'upload_queue';
 const UPLOAD_PROGRESS_KEY = 'upload_progress';
+
+/**
+ * Generate a simple UUID v4 compatible ID (React Native compatible)
+ */
+const generateId = (): string => {
+  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${Math.random().toString(36).substr(2, 9)}`;
+};
 
 export interface UploadTask {
   id: string;
@@ -27,7 +33,7 @@ export const queueAudioForUpload = async (
 ): Promise<string> => {
   try {
     const uploadTask: UploadTask = {
-      id: uuidv4(),
+      id: generateId(),
       noteId,
       audioUri,
       timestamp: Date.now(),
