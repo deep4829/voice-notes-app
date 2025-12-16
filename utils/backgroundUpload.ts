@@ -206,8 +206,8 @@ export const processUploadQueue = async (): Promise<void> => {
         task.retries >= task.maxRetries
       ) {
         if (task.retries >= task.maxRetries) {
-          console.error(
-            `[BG Upload] Max retries exceeded for task ${task.id}`
+          console.warn(
+            `[BG Upload] Max retries exceeded for task ${task.id} - audio saved locally`
           );
           task.status = 'failed';
         }
