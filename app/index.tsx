@@ -31,6 +31,8 @@ import { semanticSearch } from "@/utils/semanticSearch";
 import { generateSummary } from "@/utils/summarization";
 import { analyzeVocabulary } from "@/utils/vocabularyInsights";
 import { VocabularyInsightsView } from "@/components/VocabularyInsightsView";
+import { analyzeSentiment, analyzeSentimentTrends } from "@/utils/sentimentAnalysis";
+import SentimentAnalysisView from "@/components/SentimentAnalysisView";
 
 
 
@@ -54,6 +56,7 @@ export default function HomeScreen() {
   const [viewMode, setViewMode] = useState<'all' | 'folders' | 'insights'>('all');
   const [selectedFolder, setSelectedFolder] = useState<SmartFolder | null>(null);
   const [showSearchHint, setShowSearchHint] = useState(false);
+  const [insightType, setInsightType] = useState<'vocabulary' | 'sentiment'>('vocabulary');
 
   // Compute smart folders structure
   const folderStructure: FolderStructure = viewMode === 'folders' ? createSmartFolders(notes) : { folders: [], ungrouped: [], folderMap: {} };
@@ -557,8 +560,48 @@ export default function HomeScreen() {
               <Text style={styles.emptyText}>Loading...</Text>
             </View>
           ) : viewMode === 'insights' ? (
-            // Insights view
-            <VocabularyInsightsView insights={analyzeVocabulary(notes)} />
+            // Insights view with toggle
+            <>
+              <View style={styles.insightToggleContainer}>
+                <TouchableOpacity
+                  style={[
+                    styles.insightToggleButton,
+                    insightType === 'vocabulary' && styles.insightToggleButtonActive,
+                  ]}
+                  onPress={() => setInsightType('vocabulary')}
+                >
+                  <Text
+                    style={[
+                      styles.insightToggleText,
+                      insightType === 'vocabulary' && styles.insightToggleTextActive,
+                    ]}
+                  >
+                    📚 Vocabulary
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.insightToggleButton,
+                    insightType === 'sentiment' && styles.insightToggleButtonActive,
+                  ]}
+                  onPress={() => setInsightType('sentiment')}
+                >
+                  <Text
+                    style={[
+                      styles.insightToggleText,
+                      insightType === 'sentiment' && styles.insightToggleTextActive,
+                    ]}
+                  >
+                    😊 Sentiment
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              {insightType === 'vocabulary' ? (
+                <VocabularyInsightsView insights={analyzeVocabulary(notes)} />
+              ) : (
+                <SentimentAnalysisView notes={notes} />
+              )}
+            </>
           ) : viewMode === 'folders' ? (
             // Folder view
             selectedFolder ? (
@@ -639,6 +682,11 @@ export default function HomeScreen() {
                       {/* Word Cloud for expanded notes */}
                       {expandedNoteId === note.id && hasEnoughContentForWordCloud(note.transcription) && (
                         <WordCloudView wordCloudData={generateWordCloud(note.transcription, 25)} />
+                      )}
+
+                      {/* Sentiment Analysis for expanded notes */}
+                      {expandedNoteId === note.id && (
+                        <SentimentAnalysisView analysis={analyzeSentiment(note.transcription)} />
                       )}
 
                       {note.tags && note.tags.length > 0 && (
@@ -794,6 +842,10 @@ export default function HomeScreen() {
                 {/* Word Cloud for expanded notes */}
                 {expandedNoteId === note.id && hasEnoughContentForWordCloud(note.transcription) && (
                   <WordCloudView wordCloudData={generateWordCloud(note.transcription, 25)} />
+                )}
+                {/* Sentiment Analysis for expanded notes */}
+                {expandedNoteId === note.id && (
+                  <SentimentAnalysisView analysis={analyzeSentiment(note.transcription)} />
                 )}
                 {note.tags && note.tags.length > 0 && (
                   <View style={styles.tagsContainer}>
@@ -1320,5 +1372,36 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     justifyContent: "center",
     alignItems: "center",
+  },
+  insightToggleContainer: {
+    flexDirection: "row",
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: "#0F172A",
+    marginBottom: 12,
+  },
+  insightToggleButton: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: "#1E293B",
+    borderWidth: 2,
+    borderColor: "transparent",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  insightToggleButtonActive: {
+    backgroundColor: "#0EA5E9",
+    borderColor: "#0284C7",
+  },
+  insightToggleText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#94A3B8",
+  },
+  insightToggleTextActive: {
+    color: "#FFFFFF",
   },
 });
