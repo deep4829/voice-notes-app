@@ -139,7 +139,7 @@ export const useNetworkStatus = () => {
     lastCheckedAt: Date.now(),
   });
 
-  const checkIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const checkIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastStatusRef = useRef<NetworkState>('online');
 
   const checkNetworkStatus = useCallback(async () => {

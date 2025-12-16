@@ -157,7 +157,7 @@ export const formatTag = (tag: string): string => {
  */
 export const filterByTag = (notes: any[], tag: string): any[] => {
   return notes.filter(note =>
-    note.tags && note.tags.some(t => t.toLowerCase() === tag.toLowerCase())
+    note.tags && note.tags.some((t: string) => t.toLowerCase() === tag.toLowerCase())
   );
 };
 

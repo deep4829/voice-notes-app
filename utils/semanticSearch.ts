@@ -408,10 +408,10 @@ export const fastSemanticSearch = (
         matchType: 'semantic' as const,
         matchedTerms: [],
         explanation: `Semantic match (frequency: ${frequency})`,
-      };
+      } as SemanticSearchResult;
     })
     .filter((result): result is SemanticSearchResult => result !== null)
-    .sort((a, b) => b.relevanceScore - a.relevanceScore);
+    .sort((a, b) => (b?.relevanceScore || 0) - (a?.relevanceScore || 0));
   
   return matchedNotes;
 };

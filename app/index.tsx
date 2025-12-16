@@ -976,6 +976,12 @@ const styles = StyleSheet.create({
   iconButton: {
     padding: 4,
   },
+  noteTranscription: {
+    fontSize: 14,
+    color: "#CBD5E1",
+    lineHeight: 20,
+    marginBottom: 12,
+  },
   noteText: {
     fontSize: 16,
     color: "#E2E8F0",
