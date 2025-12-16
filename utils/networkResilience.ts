@@ -85,11 +85,11 @@ export const getStoredNetworkStatus = async (): Promise<NetworkStatus | null> =>
 };
 
 /**
- * Handle upload resumption when connectivity returns
+ * Handle upload resumption and cache sync when connectivity returns
  */
 export const resumeFailedUploads = async (): Promise<void> => {
   try {
-    console.log('[Network] Resuming failed uploads...');
+    console.log('[Network] Resuming failed uploads and syncing cache...');
     const queue = await getUploadQueue();
 
     // Find stalled or failed uploads
@@ -101,13 +101,32 @@ export const resumeFailedUploads = async (): Promise<void> => {
 
     if (stalledTasks.length === 0) {
       console.log('[Network] No stalled uploads to resume');
-      return;
+    } else {
+      console.log(`[Network] Found ${stalledTasks.length} stalled uploads, resuming...`);
+
+      // Reset stalled uploads to pending state to retry
+      for (const task of stalledTasks) {
+        await updateUploadStatus(task.id, 'pending');
+      }
     }
 
-    console.log(`[Network] Found ${stalledTasks.length} stalled uploads, resuming...`);
+    // Sync cache with latest data if available
+    try {
+      const { syncCacheOnConnectivity } = await import('./cacheManager');
+      // In a real app, you would fetch latest notes from server here
+      // For now, this is a placeholder for future server sync
+      console.log('[Network] Cache sync point ready for server sync');
+    } catch (error) {
+      console.error('[Network] Error during cache sync:', error);
+    }
 
-    // Reset stalled uploads to pending state to retry
-    for (const task of stalledTasks) {
+    // Trigger immediate upload processing
+    const { processUploadQueue } = await import('./backgroundUpload');
+    await processUploadQueue();
+  } catch (error) {
+    console.error('[Network] Error resuming uploads:', error);
+  }
+};
       await updateUploadStatus(task.id, 'pending');
     }
 

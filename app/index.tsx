@@ -21,11 +21,12 @@ import { setupAudioSession, requestAudioPermissions, registerBackgroundRecording
 import { generateTags } from "@/utils/tagging";
 import { queueAudioForUpload, registerBackgroundUploadTask } from "@/utils/backgroundUpload";
 import { initializeNetworkMonitoring, useNetworkStatus } from "@/utils/networkResilience";
+import { initializeCache, getCachedAudioPath } from "@/utils/cacheManager";
 
 
 
 export default function HomeScreen() {
-  const { notes, addNote, deleteNote, updateNote, isLoading } = useNotes();
+  const { notes, addNote, deleteNote, updateNote, isLoading, isOfflineMode } = useNotes();
   const { isConnected, networkType } = useNetworkStatus();
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [isRecording, setIsRecording] = useState(false);
@@ -118,6 +119,9 @@ export default function HomeScreen() {
       // Setup audio session for background recording capability
       await setupAudioSession();
 
+      // Initialize cache for offline access
+      await initializeCache();
+
       // Register background task handlers
       registerBackgroundRecordingTask();
       
@@ -127,7 +131,7 @@ export default function HomeScreen() {
       // Initialize network monitoring for resilience
       await initializeNetworkMonitoring();
 
-      console.log("Audio setup complete with background recording, upload, and network resilience enabled");
+      console.log("Audio setup complete with background recording, upload, network resilience, and caching enabled");
     } catch (error) {
       console.error("Failed to setup audio:", error);
     }
@@ -298,8 +302,21 @@ export default function HomeScreen() {
         await sound.unloadAsync();
       }
 
+      // Try to use cached audio if offline, otherwise use original URI
+      let audioUri = note.audioUri;
+      if (isOfflineMode) {
+        const cachedPath = await getCachedAudioPath(note.id);
+        if (cachedPath) {
+          audioUri = cachedPath;
+          console.log("[Playback] Using cached audio for offline playback");
+        } else {
+          Alert.alert("Audio Unavailable", "This audio file is not cached for offline playback");
+          return;
+        }
+      }
+
       const { sound: newSound } = await Audio.Sound.createAsync(
-        { uri: note.audioUri },
+        { uri: audioUri },
         { shouldPlay: true }
       );
 
@@ -313,6 +330,7 @@ export default function HomeScreen() {
       });
     } catch (error) {
       console.error("Failed to play audio:", error);
+      Alert.alert("Playback Error", "Could not play audio file");
     }
   };
 
@@ -409,6 +427,13 @@ export default function HomeScreen() {
             </View>
           </View>
         </View>
+
+        {/* Offline Mode Banner */}
+        {isOfflineMode && (
+          <View style={styles.offlineBanner}>
+            <Text style={styles.offlineBannerText}>📴 Offline Mode - Changes saved locally</Text>
+          </View>
+        )}
 
         {/* Search Bar */}
         <View style={styles.searchContainer}>
@@ -671,6 +696,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "bold",
     color: "#FFFFFF",
+  },
+  offlineBanner: {
+    backgroundColor: "#F97316",
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  offlineBannerText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "600",
   },
   scrollView: {
     flex: 1,
