@@ -3,5 +3,15 @@
     "source.fixAll": "explicit",
     "source.organizeImports": "explicit",
     "source.sortMembers": "explicit"
+  },
+  "problems.exclude": {
+    "**/node_modules/**": true
+  },
+  "search.exclude": {
+    "node_modules": true,
+    "*.lock": true
+  },
+  "files.watcherExclude": {
+    "node_modules/**": true
   }
 }
