@@ -8,6 +8,7 @@ export interface Note {
   createdAt: number;
   updatedAt?: number;
   isFavorite?: boolean;
+  tags?: string[];
 }
 
 export interface Recording {

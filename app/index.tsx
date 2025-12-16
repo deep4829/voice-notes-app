@@ -18,6 +18,7 @@ import { Mic, Square, Play, Pause, Trash2, Star } from "lucide-react-native";
 import { useNotes } from "@/contexts/NotesContext";
 import { Note } from "@/types/note";
 import { setupAudioSession, requestAudioPermissions, registerBackgroundRecordingTask } from "@/utils/backgroundRecording";
+import { generateTags } from "@/utils/tagging";
 
 
 
@@ -249,6 +250,9 @@ export default function HomeScreen() {
       return;
     }
 
+    // Generate automatic tags from transcription
+    const tags = generateTags(pendingTranscription);
+
     const newNote: Note = {
       id: Date.now().toString(),
       title: titleInput.trim(),
@@ -257,6 +261,7 @@ export default function HomeScreen() {
       duration: pendingRecordingDuration,
       createdAt: Date.now(),
       language: pendingLanguage,
+      tags: tags,
     };
 
     addNote(newNote);
@@ -335,13 +340,15 @@ export default function HomeScreen() {
   const getFilteredNotes = () => {
     let filtered = notes;
 
-    // Search filter
+    // Search filter - check title, transcription, and tags
     if (searchQuery.trim()) {
       const searchLower = searchQuery.toLowerCase();
-      filtered = filtered.filter((note: Note) =>
-        (note.title?.toLowerCase().includes(searchLower) || false) ||
-        note.transcription.toLowerCase().includes(searchLower)
-      );
+      filtered = filtered.filter((note: Note) => {
+        const matchesTitle = (note.title?.toLowerCase().includes(searchLower) || false);
+        const matchesTranscription = note.transcription.toLowerCase().includes(searchLower);
+        const matchesTags = note.tags?.some(tag => tag.toLowerCase().includes(searchLower)) || false;
+        return matchesTitle || matchesTranscription || matchesTags;
+      });
     }
 
     // Tab filter
@@ -486,6 +493,15 @@ export default function HomeScreen() {
                   <TouchableOpacity onPress={() => setExpandedNoteId(null)}>
                     <Text style={styles.seeLessText}>See Less</Text>
                   </TouchableOpacity>
+                )}
+                {note.tags && note.tags.length > 0 && (
+                  <View style={styles.tagsContainer}>
+                    {note.tags.map((tag, index) => (
+                      <View key={index} style={styles.tag}>
+                        <Text style={styles.tagText}>#{tag}</Text>
+                      </View>
+                    ))}
+                  </View>
                 )}
                 <View style={styles.noteFooter}>
                   <Text style={styles.noteDuration}>
@@ -850,5 +866,23 @@ const styles = StyleSheet.create({
     color: "#94A3B8",
     fontSize: 14,
     fontWeight: "600",
+  },
+  tagsContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 12,
+    marginTop: 12,
+  },
+  tag: {
+    backgroundColor: "#0EA5E9",
+    borderRadius: 16,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  tagText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "500",
   },
 });
