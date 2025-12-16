@@ -29,6 +29,8 @@ import { createSmartFolders, getNotesInFolder, getFolderBreadcrumb } from "@/uti
 import type { SmartFolder, FolderStructure } from "@/utils/smartFolders";
 import { semanticSearch } from "@/utils/semanticSearch";
 import { generateSummary } from "@/utils/summarization";
+import { analyzeVocabulary } from "@/utils/vocabularyInsights";
+import { VocabularyInsightsView } from "@/components/VocabularyInsightsView";
 
 
 
@@ -49,7 +51,7 @@ export default function HomeScreen() {
   const [pendingTranscription, setPendingTranscription] = useState('');
   const [pendingLanguage, setPendingLanguage] = useState('');
   const [expandedNoteId, setExpandedNoteId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'all' | 'folders'>('all');
+  const [viewMode, setViewMode] = useState<'all' | 'folders' | 'insights'>('all');
   const [selectedFolder, setSelectedFolder] = useState<SmartFolder | null>(null);
   const [showSearchHint, setShowSearchHint] = useState(false);
 
@@ -527,6 +529,22 @@ export default function HomeScreen() {
               📁 Folders
             </Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, viewMode === 'insights' && styles.tabActive]}
+            onPress={() => {
+              setViewMode(viewMode === 'insights' ? 'all' : 'insights');
+              setSelectedFolder(null);
+            }}
+          >
+            <Text
+              style={[
+                styles.tabText,
+                viewMode === 'insights' && styles.tabTextActive,
+              ]}
+            >
+              📊 Insights
+            </Text>
+          </TouchableOpacity>
         </View>
 
         <ScrollView
@@ -538,6 +556,9 @@ export default function HomeScreen() {
             <View style={styles.emptyState}>
               <Text style={styles.emptyText}>Loading...</Text>
             </View>
+          ) : viewMode === 'insights' ? (
+            // Insights view
+            <VocabularyInsightsView insights={analyzeVocabulary(notes)} />
           ) : viewMode === 'folders' ? (
             // Folder view
             selectedFolder ? (
