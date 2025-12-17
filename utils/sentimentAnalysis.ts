@@ -367,7 +367,7 @@ export function analyzeSentiment(text: string): SentimentAnalysis {
 
   // Analyze overall sentiment
   const overallScore = calculateSentiment(text);
-  const overallSentiment = classifySentiment(overallScore.positive, overallScore.negative, overallScore.compound);
+  const overallSentiment = classifySentiment(overallScore.compound, overallScore.positive, overallScore.negative);
 
   // Analyze sentence-level sentiment
   const sentences = tokenizeSentences(text).map((sentence) => {

@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { View, ScrollView, StyleSheet, Text, Dimensions } from 'react-native';
-import { SentimentAnalysis, analyzeSentimentTrends, getSentimentColor, getSentimentEmoji } from '@/utils/sentimentAnalysis';
+import { SentimentAnalysis, analyzeSentiment, analyzeSentimentTrends, getSentimentColor, getSentimentEmoji } from '@/utils/sentimentAnalysis';
 import { Note } from '@/types/note';
 
 const { width } = Dimensions.get('window');
@@ -11,10 +11,29 @@ interface SentimentViewProps {
 }
 
 const SentimentAnalysisView: React.FC<SentimentViewProps> = ({ analysis, notes = [] }) => {
-  const trends = useMemo(() => (notes.length > 0 ? analyzeSentimentTrends(notes) : null), [notes]);
-  const sentimentColor = analysis ? getSentimentColor(analysis.sentiment) : getSentimentColor('Neutral');
+  const effectiveAnalysis = useMemo(() => {
+    if (analysis) {
+      return analysis;
+    }
 
-  if (!analysis || !notes || notes.length === 0) {
+    if (notes.length > 0) {
+      const combinedTranscript = notes
+        .map((note) => note.transcription)
+        .filter((text) => text && text.trim().length > 0)
+        .join('\n');
+
+      if (combinedTranscript.length > 0) {
+        return analyzeSentiment(combinedTranscript);
+      }
+    }
+
+    return null;
+  }, [analysis, notes]);
+
+  const trends = useMemo(() => (notes.length > 0 ? analyzeSentimentTrends(notes) : null), [notes]);
+  const sentimentColor = effectiveAnalysis ? getSentimentColor(effectiveAnalysis.sentiment) : getSentimentColor('Neutral');
+
+  if (!effectiveAnalysis || notes.length === 0) {
     return (
       <View style={styles.container}>
         <View style={styles.emptyState}>
@@ -30,9 +49,9 @@ const SentimentAnalysisView: React.FC<SentimentViewProps> = ({ analysis, notes =
       {/* Header Section - Overall Sentiment */}
       <View style={styles.section}>
         <View style={[styles.sentimentCard, { backgroundColor: sentimentColor.bg, borderColor: sentimentColor.border }]}>
-          <Text style={styles.sentimentEmoji}>{getSentimentEmoji(analysis.sentiment)}</Text>
-          <Text style={[styles.sentimentLabel, { color: sentimentColor.text }]}>{analysis.sentiment}</Text>
-          <Text style={styles.emotionalTone}>{analysis.emotionalTone}</Text>
+          <Text style={styles.sentimentEmoji}>{getSentimentEmoji(effectiveAnalysis.sentiment)}</Text>
+          <Text style={[styles.sentimentLabel, { color: sentimentColor.text }]}>{effectiveAnalysis.sentiment}</Text>
+          <Text style={styles.emotionalTone}>{effectiveAnalysis.emotionalTone}</Text>
 
           <View style={styles.scoreContainer}>
             <View style={styles.scoreBar}>
@@ -42,18 +61,18 @@ const SentimentAnalysisView: React.FC<SentimentViewProps> = ({ analysis, notes =
                   style={[
                     styles.compoundBar,
                     {
-                      width: `${((analysis.overall.compound + 1) / 2) * 100}%`,
+                      width: `${((effectiveAnalysis.overall.compound + 1) / 2) * 100}%`,
                       backgroundColor:
-                        analysis.overall.compound > 0
+                        effectiveAnalysis.overall.compound > 0
                           ? '#4ade80'
-                          : analysis.overall.compound < 0
+                          : effectiveAnalysis.overall.compound < 0
                             ? '#f87171'
                             : '#facc15',
                     },
                   ]}
                 />
               </View>
-              <Text style={styles.scoreValue}>{(analysis.overall.compound * 100).toFixed(0)}%</Text>
+              <Text style={styles.scoreValue}>{(effectiveAnalysis.overall.compound * 100).toFixed(0)}%</Text>
             </View>
 
             <View style={styles.confidenceBar}>
@@ -63,12 +82,12 @@ const SentimentAnalysisView: React.FC<SentimentViewProps> = ({ analysis, notes =
                   style={[
                     styles.confidenceIndicator,
                     {
-                      width: `${analysis.confidence * 100}%`,
+                      width: `${effectiveAnalysis.confidence * 100}%`,
                     },
                   ]}
                 />
               </View>
-              <Text style={styles.scoreValue}>{(analysis.confidence * 100).toFixed(0)}%</Text>
+              <Text style={styles.scoreValue}>{(effectiveAnalysis.confidence * 100).toFixed(0)}%</Text>
             </View>
           </View>
         </View>
@@ -80,19 +99,19 @@ const SentimentAnalysisView: React.FC<SentimentViewProps> = ({ analysis, notes =
         <View style={styles.breakdownContainer}>
           <StatBox
             label="Positive"
-            value={`${(analysis.overall.positive * 100).toFixed(0)}%`}
+            value={`${(effectiveAnalysis.overall.positive * 100).toFixed(0)}%`}
             color="#4ade80"
             emoji="😊"
           />
           <StatBox
             label="Negative"
-            value={`${(analysis.overall.negative * 100).toFixed(0)}%`}
+            value={`${(effectiveAnalysis.overall.negative * 100).toFixed(0)}%`}
             color="#f87171"
             emoji="😔"
           />
           <StatBox
             label="Neutral"
-            value={`${(analysis.overall.neutral * 100).toFixed(0)}%`}
+            value={`${(effectiveAnalysis.overall.neutral * 100).toFixed(0)}%`}
             color="#facc15"
             emoji="😐"
           />
@@ -100,11 +119,11 @@ const SentimentAnalysisView: React.FC<SentimentViewProps> = ({ analysis, notes =
       </View>
 
       {/* Key Phrases */}
-      {analysis.keyPhrases && analysis.keyPhrases.length > 0 && (
+      {effectiveAnalysis.keyPhrases && effectiveAnalysis.keyPhrases.length > 0 && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>🎯 Key Phrases</Text>
           <View style={styles.phrasesContainer}>
-            {analysis.keyPhrases.slice(0, 8).map((phrase, index) => {
+            {effectiveAnalysis.keyPhrases.slice(0, 8).map((phrase, index) => {
               const phraseColor = phrase.sentiment === 'Positive' ? '#4ade80' : '#f87171';
               return (
                 <View key={index} style={[styles.phraseTag, { borderColor: phraseColor }]}>
@@ -122,11 +141,11 @@ const SentimentAnalysisView: React.FC<SentimentViewProps> = ({ analysis, notes =
       )}
 
       {/* Sentence-level Analysis */}
-      {analysis.sentences && analysis.sentences.length > 0 && (
+      {effectiveAnalysis.sentences && effectiveAnalysis.sentences.length > 0 && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>📝 Sentence Analysis (Top 5)</Text>
           <View style={styles.sentencesContainer}>
-            {analysis.sentences.slice(0, 5).map((sentence, index) => {
+            {effectiveAnalysis.sentences.slice(0, 5).map((sentence, index) => {
               const sentenceColor = getSentimentColor(sentence.sentiment_label);
               return (
                 <View key={index} style={[styles.sentenceBox, { borderLeftColor: sentenceColor.border, borderLeftWidth: 3 }]}>
@@ -215,9 +234,9 @@ const SentimentAnalysisView: React.FC<SentimentViewProps> = ({ analysis, notes =
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>📄 Note Summary</Text>
           <View style={styles.summaryBox}>
-            <SummaryLine label="Sentiment Sentences" value={`${analysis.sentences.length}`} />
-            <SummaryLine label="Key Phrases Found" value={`${analysis.keyPhrases.length}`} />
-            <SummaryLine label="Analysis Confidence" value={`${(analysis.confidence * 100).toFixed(0)}%`} />
+            <SummaryLine label="Sentiment Sentences" value={`${effectiveAnalysis.sentences.length}`} />
+            <SummaryLine label="Key Phrases Found" value={`${effectiveAnalysis.keyPhrases.length}`} />
+            <SummaryLine label="Analysis Confidence" value={`${(effectiveAnalysis.confidence * 100).toFixed(0)}%`} />
           </View>
         </View>
       )}

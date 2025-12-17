@@ -14,7 +14,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Audio } from "expo-av";
 import { useMutation } from "@tanstack/react-query";
-import { Mic, Square, Play, Pause, Trash2, Star } from "lucide-react-native";
+import { Mic, Square, Play, Pause, Trash2, Star, X } from "lucide-react-native";
 import { useNotes } from "@/contexts/NotesContext";
 import { Note } from "@/types/note";
 import { setupAudioSession, requestAudioPermissions, registerBackgroundRecordingTask } from "@/utils/backgroundRecording";
@@ -30,10 +30,12 @@ import { semanticSearch } from "@/utils/semanticSearch";
 import { generateSummary } from "@/utils/summarization";
 import { analyzeVocabulary } from "@/utils/vocabularyInsights";
 import { VocabularyInsightsView } from "@/components/VocabularyInsightsView";
-import { analyzeSentiment, analyzeSentimentTrends } from "@/utils/sentimentAnalysis";
+import { analyzeSentiment } from "@/utils/sentimentAnalysis";
 import SentimentAnalysisView from "@/components/SentimentAnalysisView";
 import { analyzeFillerWords } from "@/utils/fillerWordRemoval";
 import FillerWordView from "@/components/FillerWordView";
+
+type AnalysisType = "wordCloud" | "sentiment" | "fillerWords";
 
 
 
@@ -58,10 +60,37 @@ export default function HomeScreen() {
   const [selectedFolder, setSelectedFolder] = useState<SmartFolder | null>(null);
   const [showSearchHint, setShowSearchHint] = useState(false);
   const [insightType, setInsightType] = useState<'vocabulary' | 'sentiment'>('vocabulary');
-  const [showFillerWordAnalysis, setShowFillerWordAnalysis] = useState(false);
+  const [analysisModalVisible, setAnalysisModalVisible] = useState(false);
+  const [activeAnalysisNote, setActiveAnalysisNote] = useState<Note | null>(null);
+  const [activeAnalysisType, setActiveAnalysisType] = useState<AnalysisType | null>(null);
 
   // Compute smart folders structure
   const folderStructure: FolderStructure = viewMode === 'folders' ? createSmartFolders(notes) : { folders: [], ungrouped: [], folderMap: {} };
+
+  const openAnalysisModal = (note: Note, type: AnalysisType) => {
+    setActiveAnalysisNote(note);
+    setActiveAnalysisType(type);
+    setAnalysisModalVisible(true);
+  };
+
+  const closeAnalysisModal = () => {
+    setAnalysisModalVisible(false);
+    setActiveAnalysisNote(null);
+    setActiveAnalysisType(null);
+  };
+
+  const getAnalysisTitle = (type: AnalysisType | null) => {
+    switch (type) {
+      case "wordCloud":
+        return "Word Cloud";
+      case "sentiment":
+        return "Sentiment Insights";
+      case "fillerWords":
+        return "Filler Word Breakdown";
+      default:
+        return "Note Analysis";
+    }
+  };
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const waveAnimations = useRef(
@@ -625,115 +654,124 @@ export default function HomeScreen() {
                     <Text style={styles.emptyText}>No notes in this folder</Text>
                   </View>
                 ) : (
-                  getNotesInFolder(notes, selectedFolder).map((note: Note) => (
-                    <View key={note.id} style={styles.noteCard}>
-                      <View style={styles.noteHeader}>
-                        <View style={{ flex: 1 }}>
-                          {note.title && (
-                            <Text style={styles.noteTitle}>{note.title}</Text>
-                          )}
-                          <Text style={styles.noteDate}>{formatDate(note.createdAt)}</Text>
-                          {note.summary && (
-                            <Text style={styles.noteSummary} numberOfLines={2}>
-                              {note.summary}
-                            </Text>
-                          )}
+                  getNotesInFolder(notes, selectedFolder).map((note: Note) => {
+                    const wordCloudAvailable = hasEnoughContentForWordCloud(note.transcription);
+                    const hasTranscription = note.transcription.trim().length > 0;
+
+                    return (
+                      <View key={note.id} style={styles.noteCard}>
+                        <View style={styles.noteHeader}>
+                          <View style={{ flex: 1 }}>
+                            {note.title && (
+                              <Text style={styles.noteTitle}>{note.title}</Text>
+                            )}
+                            <Text style={styles.noteDate}>{formatDate(note.createdAt)}</Text>
+                            {note.summary && (
+                              <Text style={styles.noteSummary} numberOfLines={2}>
+                                {note.summary}
+                              </Text>
+                            )}
+                          </View>
+                          <View style={styles.noteActions}>
+                            <TouchableOpacity
+                              onPress={() => {
+                                const isFavorite = (note as any).isFavorite;
+                                updateNote(note.id, { isFavorite: !isFavorite } as any);
+                              }}
+                            >
+                              <Star
+                                size={20}
+                                color={(note as any).isFavorite ? '#0EA5E9' : '#64748B'}
+                                fill={(note as any).isFavorite ? '#0EA5E9' : 'none'}
+                              />
+                            </TouchableOpacity>
+                            <TouchableOpacity onPress={() => deleteNote(note.id)}>
+                              <Trash2 size={20} color="#64748B" />
+                            </TouchableOpacity>
+                          </View>
                         </View>
-                        <View style={styles.noteActions}>
-                          <TouchableOpacity
-                            onPress={() => {
-                              const isFavorite = (note as any).isFavorite;
-                              updateNote(note.id, { isFavorite: !isFavorite } as any);
-                            }}
-                          >
-                            <Star
-                              size={20}
-                              color={(note as any).isFavorite ? '#0EA5E9' : '#64748B'}
-                              fill={(note as any).isFavorite ? '#0EA5E9' : 'none'}
-                            />
-                          </TouchableOpacity>
-                          <TouchableOpacity onPress={() => deleteNote(note.id)}>
-                            <Trash2 size={20} color="#64748B" />
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                      
-                      {/* Render rest of note content similar to filteredNotes */}
-                      <Text
-                        style={styles.noteTranscription}
-                        numberOfLines={expandedNoteId === note.id ? undefined : 3}
-                      >
-                        {note.transcription}
-                      </Text>
+                        
+                        {/* Render rest of note content similar to filteredNotes */}
+                        <Text
+                          style={styles.noteTranscription}
+                          numberOfLines={expandedNoteId === note.id ? undefined : 3}
+                        >
+                          {note.transcription}
+                        </Text>
 
-                      {note.transcription.split('\n').length > 3 && expandedNoteId !== note.id && (
-                        <TouchableOpacity onPress={() => setExpandedNoteId(note.id)}>
-                          <Text style={styles.seeMoreText}>See More</Text>
-                        </TouchableOpacity>
-                      )}
-
-                      {expandedNoteId === note.id && note.transcription.split('\n').length > 3 && (
-                        <TouchableOpacity onPress={() => setExpandedNoteId(null)}>
-                          <Text style={styles.seeLessText}>See Less</Text>
-                        </TouchableOpacity>
-                      )}
-
-                      {/* Word Cloud for expanded notes */}
-                      {expandedNoteId === note.id && hasEnoughContentForWordCloud(note.transcription) && (
-                        <WordCloudView wordCloudData={generateWordCloud(note.transcription, 25)} />
-                      )}
-
-                      {/* Sentiment Analysis for expanded notes */}
-                      {expandedNoteId === note.id && (
-                        <SentimentAnalysisView analysis={analyzeSentiment(note.transcription)} />
-                      )}
-
-                      {/* Filler Word Analysis for expanded notes */}
-                      {expandedNoteId === note.id && (
-                        <>
-                          <TouchableOpacity
-                            style={[styles.toggleAnalysisButton, showFillerWordAnalysis && styles.toggleAnalysisButtonActive]}
-                            onPress={() => setShowFillerWordAnalysis(!showFillerWordAnalysis)}
-                          >
-                            <Text style={[styles.toggleAnalysisText, showFillerWordAnalysis && styles.toggleAnalysisTextActive]}>
-                              {showFillerWordAnalysis ? '✨ Hide' : '🎙️ Show'} Filler Word Analysis
-                            </Text>
-                          </TouchableOpacity>
-                          {showFillerWordAnalysis && (
-                            <FillerWordView analysis={analyzeFillerWords(note.transcription)} />
-                          )}
-                        </>
-                      )}
-
-                      {note.tags && note.tags.length > 0 && (
-                        <View style={styles.tagsContainer}>
-                          {note.tags.map((tag, index) => (
-                            <View key={index} style={styles.tag}>
-                              <Text style={styles.tagText}>#{tag}</Text>
-                            </View>
-                          ))}
-                        </View>
-                      )}
-
-                      <View style={styles.noteFooter}>
-                        <Text style={styles.noteDuration}>{formatDuration(note.duration)}</Text>
-                        <Text style={styles.noteLanguage}>{note.language}</Text>
-                      </View>
-
-                      {/* Playback controls */}
-                      <View style={styles.playbackContainer}>
-                        {playingNoteId === note.id ? (
-                          <TouchableOpacity onPress={pauseAudio} style={styles.playButton}>
-                            <Pause size={20} color="#FFFFFF" fill="#FFFFFF" />
-                          </TouchableOpacity>
-                        ) : (
-                          <TouchableOpacity onPress={() => playAudio(note)} style={styles.playButton}>
-                            <Play size={20} color="#FFFFFF" fill="#FFFFFF" />
+                        {note.transcription.split('\n').length > 3 && expandedNoteId !== note.id && (
+                          <TouchableOpacity onPress={() => setExpandedNoteId(note.id)}>
+                            <Text style={styles.seeMoreText}>See More</Text>
                           </TouchableOpacity>
                         )}
+
+                        {expandedNoteId === note.id && note.transcription.split('\n').length > 3 && (
+                          <TouchableOpacity onPress={() => setExpandedNoteId(null)}>
+                            <Text style={styles.seeLessText}>See Less</Text>
+                          </TouchableOpacity>
+                        )}
+
+                        {hasTranscription && (
+                          <View style={styles.analysisButtonRow}>
+                            <TouchableOpacity
+                              style={[styles.analysisButton, !wordCloudAvailable && styles.analysisButtonDisabled]}
+                              onPress={() => openAnalysisModal(note, "wordCloud")}
+                              disabled={!wordCloudAvailable}
+                            >
+                              <Text
+                                style={[
+                                  styles.analysisButtonText,
+                                  !wordCloudAvailable && styles.analysisButtonTextDisabled,
+                                ]}
+                              >
+                                ☁️ Word Cloud
+                              </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={styles.analysisButton}
+                              onPress={() => openAnalysisModal(note, "sentiment")}
+                            >
+                              <Text style={styles.analysisButtonText}>😊 Sentiment</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={styles.analysisButton}
+                              onPress={() => openAnalysisModal(note, "fillerWords")}
+                            >
+                              <Text style={styles.analysisButtonText}>🎙️ Filler Words</Text>
+                            </TouchableOpacity>
+                          </View>
+                        )}
+
+                        {note.tags && note.tags.length > 0 && (
+                          <View style={styles.tagsContainer}>
+                            {note.tags.map((tag, index) => (
+                              <View key={index} style={styles.tag}>
+                                <Text style={styles.tagText}>#{tag}</Text>
+                              </View>
+                            ))}
+                          </View>
+                        )}
+
+                        <View style={styles.noteFooter}>
+                          <Text style={styles.noteDuration}>{formatDuration(note.duration)}</Text>
+                          <Text style={styles.noteLanguage}>{note.language}</Text>
+                        </View>
+
+                        {/* Playback controls */}
+                        <View style={styles.playbackContainer}>
+                          {playingNoteId === note.id ? (
+                            <TouchableOpacity onPress={pauseAudio} style={styles.playButton}>
+                              <Pause size={20} color="#FFFFFF" fill="#FFFFFF" />
+                            </TouchableOpacity>
+                          ) : (
+                            <TouchableOpacity onPress={() => playAudio(note)} style={styles.playButton}>
+                              <Play size={20} color="#FFFFFF" fill="#FFFFFF" />
+                            </TouchableOpacity>
+                          )}
+                        </View>
                       </View>
-                    </View>
-                  ))
+                    );
+                  })
                 )}
               </>
             ) : (
@@ -790,112 +828,123 @@ export default function HomeScreen() {
               </Text>
             </View>
           ) : (
-            filteredNotes.map((note: Note) => (
-              <View key={note.id} style={styles.noteCard}>
-                <View style={styles.noteHeader}>
-                  <View style={{ flex: 1 }}>
-                    {note.title && (
-                      <Text style={styles.noteTitle}>{note.title}</Text>
-                    )}
-                    <Text style={styles.noteDate}>{formatDate(note.createdAt)}</Text>
-                    {note.summary && (
-                      <Text style={styles.noteSummary} numberOfLines={2}>
-                        {note.summary}
-                      </Text>
-                    )}
-                  </View>
-                  <View style={styles.noteActions}>
-                    <TouchableOpacity
-                      onPress={() =>
-                        updateNote(note.id, {
-                          ...(note as any),
-                          isFavorite: !(note as any).isFavorite,
-                        })
-                      }
-                      style={styles.iconButton}
-                    >
-                      <Star 
-                        size={20} 
-                        color="#0EA5E9"
-                        fill={(note as any).isFavorite ? "#0EA5E9" : "none"}
-                      />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() =>
-                        playingNoteId === note.id
-                          ? pauseAudio()
-                          : playAudio(note)
-                      }
-                      style={styles.iconButton}
-                    >
-                      {playingNoteId === note.id ? (
-                        <Pause size={20} color="#0EA5E9" />
-                      ) : (
-                        <Play size={20} color="#0EA5E9" />
+            filteredNotes.map((note: Note) => {
+              const wordCloudAvailable = hasEnoughContentForWordCloud(note.transcription);
+              const hasTranscription = note.transcription.trim().length > 0;
+
+              return (
+                <View key={note.id} style={styles.noteCard}>
+                  <View style={styles.noteHeader}>
+                    <View style={{ flex: 1 }}>
+                      {note.title && (
+                        <Text style={styles.noteTitle}>{note.title}</Text>
                       )}
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => deleteNote(note.id)}
-                      style={styles.iconButton}
-                    >
-                      <Trash2 size={20} color="#EF4444" />
-                    </TouchableOpacity>
+                      <Text style={styles.noteDate}>{formatDate(note.createdAt)}</Text>
+                      {note.summary && (
+                        <Text style={styles.noteSummary} numberOfLines={2}>
+                          {note.summary}
+                        </Text>
+                      )}
+                    </View>
+                    <View style={styles.noteActions}>
+                      <TouchableOpacity
+                        onPress={() =>
+                          updateNote(note.id, {
+                            ...(note as any),
+                            isFavorite: !(note as any).isFavorite,
+                          })
+                        }
+                        style={styles.iconButton}
+                      >
+                        <Star 
+                          size={20} 
+                          color="#0EA5E9"
+                          fill={(note as any).isFavorite ? "#0EA5E9" : "none"}
+                        />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() =>
+                          playingNoteId === note.id
+                            ? pauseAudio()
+                            : playAudio(note)
+                        }
+                        style={styles.iconButton}
+                      >
+                        {playingNoteId === note.id ? (
+                          <Pause size={20} color="#0EA5E9" />
+                        ) : (
+                          <Play size={20} color="#0EA5E9" />
+                        )}
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => deleteNote(note.id)}
+                        style={styles.iconButton}
+                      >
+                        <Trash2 size={20} color="#EF4444" />
+                      </TouchableOpacity>
+                    </View>
                   </View>
-                </View>
-                <Text style={styles.noteText} numberOfLines={expandedNoteId === note.id ? 0 : 2}>
-                  {note.transcription}
-                </Text>
-                {expandedNoteId !== note.id && note.transcription.length > 100 && (
-                  <TouchableOpacity onPress={() => setExpandedNoteId(note.id)}>
-                    <Text style={styles.seeMoreText}>See More</Text>
-                  </TouchableOpacity>
-                )}
-                {expandedNoteId === note.id && note.transcription.length > 100 && (
-                  <TouchableOpacity onPress={() => setExpandedNoteId(null)}>
-                    <Text style={styles.seeLessText}>See Less</Text>
-                  </TouchableOpacity>
-                )}
-                {/* Word Cloud for expanded notes */}
-                {expandedNoteId === note.id && hasEnoughContentForWordCloud(note.transcription) && (
-                  <WordCloudView wordCloudData={generateWordCloud(note.transcription, 25)} />
-                )}
-                {/* Sentiment Analysis for expanded notes */}
-                {expandedNoteId === note.id && (
-                  <SentimentAnalysisView analysis={analyzeSentiment(note.transcription)} />
-                )}
-                {/* Filler Word Analysis for expanded notes */}
-                {expandedNoteId === note.id && (
-                  <>
-                    <TouchableOpacity
-                      style={[styles.toggleAnalysisButton, showFillerWordAnalysis && styles.toggleAnalysisButtonActive]}
-                      onPress={() => setShowFillerWordAnalysis(!showFillerWordAnalysis)}
-                    >
-                      <Text style={[styles.toggleAnalysisText, showFillerWordAnalysis && styles.toggleAnalysisTextActive]}>
-                        {showFillerWordAnalysis ? '✨ Hide' : '🎙️ Show'} Filler Word Analysis
-                      </Text>
-                    </TouchableOpacity>
-                    {showFillerWordAnalysis && (
-                      <FillerWordView analysis={analyzeFillerWords(note.transcription)} />
-                    )}
-                  </>
-                )}
-                {note.tags && note.tags.length > 0 && (
-                  <View style={styles.tagsContainer}>
-                    {note.tags.map((tag, index) => (
-                      <View key={index} style={styles.tag}>
-                        <Text style={styles.tagText}>#{tag}</Text>
-                      </View>
-                    ))}
-                  </View>
-                )}
-                <View style={styles.noteFooter}>
-                  <Text style={styles.noteDuration}>
-                    {formatDuration(note.duration)}
+                  <Text style={styles.noteText} numberOfLines={expandedNoteId === note.id ? 0 : 2}>
+                    {note.transcription}
                   </Text>
-                  <Text style={styles.noteLanguage}>{note.language}</Text>
+                  {expandedNoteId !== note.id && note.transcription.length > 100 && (
+                    <TouchableOpacity onPress={() => setExpandedNoteId(note.id)}>
+                      <Text style={styles.seeMoreText}>See More</Text>
+                    </TouchableOpacity>
+                  )}
+                  {expandedNoteId === note.id && note.transcription.length > 100 && (
+                    <TouchableOpacity onPress={() => setExpandedNoteId(null)}>
+                      <Text style={styles.seeLessText}>See Less</Text>
+                    </TouchableOpacity>
+                  )}
+                  {hasTranscription && (
+                    <View style={styles.analysisButtonRow}>
+                      <TouchableOpacity
+                        style={[styles.analysisButton, !wordCloudAvailable && styles.analysisButtonDisabled]}
+                        onPress={() => openAnalysisModal(note, "wordCloud")}
+                        disabled={!wordCloudAvailable}
+                      >
+                        <Text
+                          style={[
+                            styles.analysisButtonText,
+                            !wordCloudAvailable && styles.analysisButtonTextDisabled,
+                          ]}
+                        >
+                          ☁️ Word Cloud
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.analysisButton}
+                        onPress={() => openAnalysisModal(note, "sentiment")}
+                      >
+                        <Text style={styles.analysisButtonText}>😊 Sentiment</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.analysisButton}
+                        onPress={() => openAnalysisModal(note, "fillerWords")}
+                      >
+                        <Text style={styles.analysisButtonText}>🎙️ Filler Words</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                  {note.tags && note.tags.length > 0 && (
+                    <View style={styles.tagsContainer}>
+                      {note.tags.map((tag, index) => (
+                        <View key={index} style={styles.tag}>
+                          <Text style={styles.tagText}>#{tag}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                  <View style={styles.noteFooter}>
+                    <Text style={styles.noteDuration}>
+                      {formatDuration(note.duration)}
+                    </Text>
+                    <Text style={styles.noteLanguage}>{note.language}</Text>
+                  </View>
                 </View>
-              </View>
-            ))
+              );
+            })
           )}
         </ScrollView>
 
@@ -931,6 +980,48 @@ export default function HomeScreen() {
                 >
                   <Text style={styles.modalButtonTextCancel}>Cancel</Text>
                 </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        <Modal
+          visible={analysisModalVisible}
+          transparent
+          animationType="slide"
+          onRequestClose={closeAnalysisModal}
+        >
+          <View style={styles.analysisModalOverlay}>
+            <View style={styles.analysisModalContent}>
+              <View style={styles.analysisModalHeader}>
+                <View style={styles.analysisModalHeading}>
+                  <Text style={styles.analysisModalTitle}>{getAnalysisTitle(activeAnalysisType)}</Text>
+                  {activeAnalysisNote && (
+                    <Text style={styles.analysisModalSubtitle}>
+                      {activeAnalysisNote.title || `Recorded ${formatDate(activeAnalysisNote.createdAt)}`}
+                    </Text>
+                  )}
+                </View>
+                <TouchableOpacity onPress={closeAnalysisModal} style={styles.analysisModalClose}>
+                  <X size={20} color="#E2E8F0" />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.analysisModalBody}>
+                {activeAnalysisNote && activeAnalysisType === "wordCloud" && (
+                  <WordCloudView wordCloudData={generateWordCloud(activeAnalysisNote.transcription, 40)} />
+                )}
+
+                {activeAnalysisNote && activeAnalysisType === "sentiment" && (
+                  <SentimentAnalysisView
+                    analysis={analyzeSentiment(activeAnalysisNote.transcription)}
+                    notes={[activeAnalysisNote]}
+                  />
+                )}
+
+                {activeAnalysisNote && activeAnalysisType === "fillerWords" && (
+                  <FillerWordView analysis={analyzeFillerWords(activeAnalysisNote.transcription)} />
+                )}
               </View>
             </View>
           </View>
@@ -1108,6 +1199,34 @@ const styles = StyleSheet.create({
     color: "#E2E8F0",
     lineHeight: 24,
     marginBottom: 12,
+  },
+  analysisButtonRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 8,
+    marginBottom: 12,
+  },
+  analysisButton: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: "#0F172A",
+    borderWidth: 1,
+    borderColor: "#1F2937",
+    alignItems: "center",
+  },
+  analysisButtonDisabled: {
+    backgroundColor: "#111827",
+    borderColor: "#1E293B",
+  },
+  analysisButtonText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#E2E8F0",
+  },
+  analysisButtonTextDisabled: {
+    color: "#475569",
   },
   noteFooter: {
     flexDirection: "row",
@@ -1312,6 +1431,51 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
   },
+  analysisModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.92)",
+    padding: 16,
+    justifyContent: "center",
+  },
+  analysisModalContent: {
+    backgroundColor: "#0F172A",
+    borderRadius: 18,
+    padding: 20,
+    width: "100%",
+    maxWidth: 720,
+    maxHeight: "90%",
+    alignSelf: "center",
+    flex: 1,
+  },
+  analysisModalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  analysisModalHeading: {
+    flex: 1,
+  },
+  analysisModalTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#F8FAFC",
+    marginBottom: 4,
+  },
+  analysisModalSubtitle: {
+    fontSize: 12,
+    color: "#94A3B8",
+  },
+  analysisModalClose: {
+    padding: 8,
+    borderRadius: 999,
+    backgroundColor: "rgba(148, 163, 184, 0.12)",
+  },
+  analysisModalBody: {
+    flex: 1,
+    marginTop: 12,
+    paddingBottom: 12,
+  },
   tagsContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -1434,30 +1598,6 @@ const styles = StyleSheet.create({
     color: "#94A3B8",
   },
   insightToggleTextActive: {
-    color: "#FFFFFF",
-  },
-  toggleAnalysisButton: {
-    marginVertical: 12,
-    marginHorizontal: 0,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    backgroundColor: "#2D3748",
-    borderWidth: 2,
-    borderColor: "transparent",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  toggleAnalysisButtonActive: {
-    backgroundColor: "#7C3AED",
-    borderColor: "#A78BFA",
-  },
-  toggleAnalysisText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#94A3B8",
-  },
-  toggleAnalysisTextActive: {
     color: "#FFFFFF",
   },
 });
