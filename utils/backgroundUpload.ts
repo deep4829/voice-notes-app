@@ -90,7 +90,7 @@ export const updateUploadStatus = async (
 };
 
 /**
- * Upload audio file to Firebase Cloud Storage
+ * Confirm audio file is available locally and record metadata
  */
 const uploadAudioFile = async (uploadTask: UploadTask): Promise<boolean> => {
   try {
@@ -103,55 +103,20 @@ const uploadAudioFile = async (uploadTask: UploadTask): Promise<boolean> => {
       return false;
     }
 
-    // Prepare upload to Firebase
-    const prepareUpload = async () => {
-      const { uploadAudioToCloud, isFirebaseReady } = await import('./firebaseConfig');
-      
-      // Check if Firebase is ready
-      if (!isFirebaseReady()) {
-        throw new Error('Firebase not ready - will retry when online');
-      }
-
-      const fileName = `${noteId}.m4a`;
-      const storagePath = await uploadAudioToCloud(audioUri, noteId, fileName);
-      
-      if (!storagePath) {
-        throw new Error('Firebase upload returned null path');
-      }
-
-      return {
-        url: storagePath,
-        platform: 'firebase',
-        uploadedAt: Date.now(),
-      };
-    };
-
-    // Use network resilience wrapper for upload
-    const { withNetworkResilience } = await import('./networkResilience');
-    const result = await withNetworkResilience(
-      prepareUpload,
-      `Upload audio for note ${noteId}`
-    );
-
-    if (!result) {
-      console.log('[BG Upload] Upload skipped (offline or Firebase unavailable, will retry later)');
-      return false;
-    }
-
-    console.log('[BG Upload] Upload successful:', result);
-
-    // Store upload metadata
+    // Record local storage metadata
     await storeUploadProgress(noteId, {
-      uploadedAt: Date.now(),
-      storagePath: result.url,
-      platform: 'firebase',
+      storedAt: audioUri,
+      storedAtTimestamp: Date.now(),
+      platform: 'local',
+      size: fileInfo.size,
     });
+
+    console.log('[BG Upload] Audio stored locally:', audioUri);
 
     return true;
   } catch (error) {
-    // In development, upload failures are non-critical
     // The audio is saved locally regardless
-    console.warn('[BG Upload] Upload warning (audio saved locally):', error);
+    console.warn('[BG Upload] Local storage warning:', error);
     return false;
   }
 };
