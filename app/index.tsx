@@ -34,6 +34,7 @@ import { analyzeSentiment } from "@/utils/sentimentAnalysis";
 import SentimentAnalysisView from "@/components/SentimentAnalysisView";
 import { analyzeFillerWords } from "@/utils/fillerWordRemoval";
 import FillerWordView from "@/components/FillerWordView";
+import { transcribeAudio } from "@/utils/transcriptionService";
 
 type AnalysisType = "wordCloud" | "sentiment" | "fillerWords";
 
@@ -232,36 +233,10 @@ export default function HomeScreen() {
 
   const transcribeMutation = useMutation({
     mutationFn: async (audioUri: string) => {
-      const formData = new FormData();
-
-      if (Platform.OS === "web") {
-        const response = await fetch(audioUri);
-        const blob = await response.blob();
-        formData.append("audio", blob, "recording.webm");
-      } else {
-        const uriParts = audioUri.split(".");
-        const fileType = uriParts[uriParts.length - 1];
-        const audioFile = {
-          uri: audioUri,
-          name: "recording." + fileType,
-          type: "audio/" + fileType,
-        } as any;
-        formData.append("audio", audioFile);
-      }
-
-      const response = await fetch(
-        "https://toolkit.rork.com/stt/transcribe/",
-        {
-          method: "POST",
-          body: formData,
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error("Transcription failed");
-      }
-
-      return await response.json();
+      // Use new transcription service with AssemblyAI/Deepgram support
+      // Falls back to Rork if needed
+      const result = await transcribeAudio(audioUri);
+      return result;
     },
   });
 
@@ -290,8 +265,10 @@ export default function HomeScreen() {
       // Store pending data and show title input
       setPendingRecordingUri(uri);
       setPendingRecordingDuration(duration);
-      setPendingTranscription(result.text);
-      setPendingLanguage(result.language);
+      // Use formatted transcript if speaker diarization is available, otherwise use plain text
+      const transcription = result.formattedTranscript || result.text || '';
+      setPendingTranscription(transcription);
+      setPendingLanguage(result.language || 'en');
       setTitleInput('');
       setShowTitleInput(true);
       setRecordingDuration(0);
