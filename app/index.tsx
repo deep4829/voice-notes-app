@@ -35,8 +35,9 @@ import SentimentAnalysisView from "@/components/SentimentAnalysisView";
 import { analyzeFillerWords } from "@/utils/fillerWordRemoval";
 import FillerWordView from "@/components/FillerWordView";
 import { transcribeAudio } from "@/utils/transcriptionService";
+import SpeakerDiarizationView from "@/components/SpeakerDiarizationView";
 
-type AnalysisType = "wordCloud" | "sentiment" | "fillerWords";
+type AnalysisType = "wordCloud" | "sentiment" | "fillerWords" | "speakers";
 
 
 
@@ -88,6 +89,8 @@ export default function HomeScreen() {
         return "Sentiment Insights";
       case "fillerWords":
         return "Filler Word Breakdown";
+      case "speakers":
+        return "Speaker Identification";
       default:
         return "Note Analysis";
     }
@@ -716,6 +719,13 @@ export default function HomeScreen() {
                             >
                               <Text style={styles.analysisButtonText}>🎙️ Filler Words</Text>
                             </TouchableOpacity>
+                            <TouchableOpacity
+                              style={styles.analysisButton}
+                              onPress={() => openAnalysisModal(note, "speakers")}
+                              disabled={!note.transcription}
+                            >
+                              <Text style={styles.analysisButtonText}>👥 Speakers</Text>
+                            </TouchableOpacity>
                           </View>
                         )}
 
@@ -902,6 +912,13 @@ export default function HomeScreen() {
                       >
                         <Text style={styles.analysisButtonText}>🎙️ Filler Words</Text>
                       </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.analysisButton}
+                        onPress={() => openAnalysisModal(note, "speakers")}
+                        disabled={!note.transcription}
+                      >
+                        <Text style={styles.analysisButtonText}>👥 Speakers</Text>
+                      </TouchableOpacity>
                     </View>
                   )}
                   {note.tags && note.tags.length > 0 && (
@@ -998,6 +1015,14 @@ export default function HomeScreen() {
 
                 {activeAnalysisNote && activeAnalysisType === "fillerWords" && (
                   <FillerWordView analysis={analyzeFillerWords(activeAnalysisNote.transcription)} />
+                )}
+
+                {activeAnalysisNote && activeAnalysisType === "speakers" && (
+                  <View style={styles.speakersContainer}>
+                    <Text style={styles.speakersTranscript}>
+                      {activeAnalysisNote.transcription}
+                    </Text>
+                  </View>
                 )}
               </View>
             </View>
@@ -1452,6 +1477,16 @@ const styles = StyleSheet.create({
     flex: 1,
     marginTop: 12,
     paddingBottom: 12,
+  },
+  speakersContainer: {
+    flex: 1,
+    paddingHorizontal: 12,
+  },
+  speakersTranscript: {
+    fontSize: 14,
+    lineHeight: 22,
+    color: "#E2E8F0",
+    fontFamily: "Menlo",
   },
   tagsContainer: {
     flexDirection: "row",
