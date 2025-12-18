@@ -1,3 +1,11 @@
+export interface SpeakerSegment {
+  speaker: number;
+  startTime: number;
+  endTime: number;
+  text: string;
+  confidence?: number;
+}
+
 export interface Note {
   id: string;
   title: string;
@@ -10,6 +18,10 @@ export interface Note {
   isFavorite?: boolean;
   tags?: string[];
   summary?: string;
+  speakerSegments?: SpeakerSegment[];
+  speakerCount?: number;
+  diarizationStatus?: 'pending' | 'processing' | 'completed' | 'error';
+  diarizationError?: string;
 }
 
 export interface Recording {

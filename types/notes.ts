@@ -1,3 +1,5 @@
+import { SpeakerSegment } from './note';
+
 export interface Note {
   id: string;
   transcription: string;
@@ -5,4 +7,7 @@ export interface Note {
   duration: number;
   createdAt: number;
   language: string;
+  title?: string;
+  speakerSegments?: SpeakerSegment[];
+  speakerCount?: number;
 }

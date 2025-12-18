@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, ScrollView, StyleSheet, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { SpeakerSegment } from '@/types/note';
 
 const getSpeakerColor = (speaker: number): string => {
   const colors = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
@@ -12,16 +13,6 @@ const formatTime = (ms: number): string => {
   const seconds = totalSeconds % 60;
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 };
-
-interface SpeakerSegment {
-  speaker: number;
-  startTime: number;
-  endTime: number;
-  text: string;
-  start?: number;
-  end?: number;
-  confidence?: number;
-}
 
 interface SpeakerDiarizationViewProps {
   speakers: SpeakerSegment[];
@@ -86,7 +77,7 @@ const SpeakerDiarizationView: React.FC<SpeakerDiarizationViewProps> = ({
                   </Text>
                 </View>
                 <View style={styles.confidenceContainer}>
-                  <Text style={styles.timeStamp}>{formatTime(segment.start ?? 0)}</Text>
+                  <Text style={styles.timeStamp}>{formatTime(segment.startTime ?? 0)}</Text>
                   {segment.confidence !== undefined && (
                     <View style={styles.confidenceBar}>
                       <View

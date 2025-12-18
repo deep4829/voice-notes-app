@@ -34,8 +34,8 @@ import { analyzeSentiment } from "@/utils/sentimentAnalysis";
 import SentimentAnalysisView from "@/components/SentimentAnalysisView";
 import { analyzeFillerWords } from "@/utils/fillerWordRemoval";
 import FillerWordView from "@/components/FillerWordView";
-import { transcribeAudio } from "@/utils/transcriptionService";
 import SpeakerDiarizationView from "@/components/SpeakerDiarizationView";
+import { diarizeWithAssemblyAI } from "@/utils/speakerDiarization";
 
 type AnalysisType = "wordCloud" | "sentiment" | "fillerWords" | "speakers";
 
@@ -65,20 +65,34 @@ export default function HomeScreen() {
   const [analysisModalVisible, setAnalysisModalVisible] = useState(false);
   const [activeAnalysisNote, setActiveAnalysisNote] = useState<Note | null>(null);
   const [activeAnalysisType, setActiveAnalysisType] = useState<AnalysisType | null>(null);
+  const [isDiarizing, setIsDiarizing] = useState(false);
+  const [diarizationError, setDiarizationError] = useState<string | null>(null);
+
+  const assemblyApiKey = process.env.EXPO_PUBLIC_ASSEMBLYAI_API_KEY || "";
+
+  const resolvedActiveNote = activeAnalysisNote
+    ? notes.find((n) => n.id === activeAnalysisNote.id) ?? activeAnalysisNote
+    : null;
 
   // Compute smart folders structure
   const folderStructure: FolderStructure = viewMode === 'folders' ? createSmartFolders(notes) : { folders: [], ungrouped: [], folderMap: {} };
 
   const openAnalysisModal = (note: Note, type: AnalysisType) => {
-    setActiveAnalysisNote(note);
+    const latestNote = notes.find((n) => n.id === note.id) ?? note;
+    setActiveAnalysisNote(latestNote);
     setActiveAnalysisType(type);
     setAnalysisModalVisible(true);
+
+    if (type === "speakers" && (!latestNote.speakerSegments || latestNote.speakerSegments.length === 0)) {
+      ensureDiarization(latestNote);
+    }
   };
 
   const closeAnalysisModal = () => {
     setAnalysisModalVisible(false);
     setActiveAnalysisNote(null);
     setActiveAnalysisType(null);
+    setDiarizationError(null);
   };
 
   const getAnalysisTitle = (type: AnalysisType | null) => {
@@ -90,11 +104,58 @@ export default function HomeScreen() {
       case "fillerWords":
         return "Filler Word Breakdown";
       case "speakers":
-        return "Speaker Identification";
+        return "Speaker Diarization";
       default:
         return "Note Analysis";
     }
   };
+
+  const ensureDiarization = useCallback(async (note: Note) => {
+    if (!assemblyApiKey) {
+      setDiarizationError("AssemblyAI API key missing");
+      return;
+    }
+
+    if (!note.audioUri) {
+      setDiarizationError("Audio file not available for diarization");
+      return;
+    }
+
+    setIsDiarizing(true);
+    setDiarizationError(null);
+    updateNote(note.id, { diarizationStatus: "processing", diarizationError: undefined });
+
+    try {
+      const result = await diarizeWithAssemblyAI(note.audioUri, assemblyApiKey);
+      updateNote(note.id, {
+        speakerSegments: result.segments,
+        speakerCount: result.speakerCount,
+        diarizationStatus: "completed",
+        diarizationError: undefined,
+        transcription: note.transcription || result.transcript || "",
+      });
+    } catch (error: any) {
+      const message = error instanceof Error ? error.message : "Failed to run speaker diarization";
+      setDiarizationError(message);
+      updateNote(note.id, { diarizationStatus: "error", diarizationError: message });
+    } finally {
+      setIsDiarizing(false);
+    }
+  }, [assemblyApiKey, updateNote]);
+
+  useEffect(() => {
+    if (!analysisModalVisible || activeAnalysisType !== "speakers" || !resolvedActiveNote) {
+      return;
+    }
+
+    if (isDiarizing) {
+      return;
+    }
+
+    if (!resolvedActiveNote.speakerSegments?.length && resolvedActiveNote.diarizationStatus !== "error") {
+      ensureDiarization(resolvedActiveNote);
+    }
+  }, [analysisModalVisible, activeAnalysisType, resolvedActiveNote, ensureDiarization, isDiarizing]);
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const waveAnimations = useRef(
@@ -236,10 +297,36 @@ export default function HomeScreen() {
 
   const transcribeMutation = useMutation({
     mutationFn: async (audioUri: string) => {
-      // Use new transcription service with AssemblyAI/Deepgram support
-      // Falls back to Rork if needed
-      const result = await transcribeAudio(audioUri);
-      return result;
+      const formData = new FormData();
+
+      if (Platform.OS === "web") {
+        const response = await fetch(audioUri);
+        const blob = await response.blob();
+        formData.append("audio", blob, "recording.webm");
+      } else {
+        const uriParts = audioUri.split(".");
+        const fileType = uriParts[uriParts.length - 1];
+        const audioFile = {
+          uri: audioUri,
+          name: "recording." + fileType,
+          type: "audio/" + fileType,
+        } as any;
+        formData.append("audio", audioFile);
+      }
+
+      const response = await fetch(
+        "https://toolkit.rork.com/stt/transcribe/",
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Transcription failed");
+      }
+
+      return await response.json();
     },
   });
 
@@ -268,10 +355,8 @@ export default function HomeScreen() {
       // Store pending data and show title input
       setPendingRecordingUri(uri);
       setPendingRecordingDuration(duration);
-      // Use formatted transcript if speaker diarization is available, otherwise use plain text
-      const transcription = result.formattedTranscript || result.text || '';
-      setPendingTranscription(transcription);
-      setPendingLanguage(result.language || 'en');
+      setPendingTranscription(result.text);
+      setPendingLanguage(result.language);
       setTitleInput('');
       setShowTitleInput(true);
       setRecordingDuration(0);
@@ -722,9 +807,8 @@ export default function HomeScreen() {
                             <TouchableOpacity
                               style={styles.analysisButton}
                               onPress={() => openAnalysisModal(note, "speakers")}
-                              disabled={!note.transcription}
                             >
-                              <Text style={styles.analysisButtonText}>👥 Speakers</Text>
+                              <Text style={styles.analysisButtonText}>🗣️ Speakers</Text>
                             </TouchableOpacity>
                           </View>
                         )}
@@ -915,9 +999,8 @@ export default function HomeScreen() {
                       <TouchableOpacity
                         style={styles.analysisButton}
                         onPress={() => openAnalysisModal(note, "speakers")}
-                        disabled={!note.transcription}
                       >
-                        <Text style={styles.analysisButtonText}>👥 Speakers</Text>
+                        <Text style={styles.analysisButtonText}>🗣️ Speakers</Text>
                       </TouchableOpacity>
                     </View>
                   )}
@@ -990,9 +1073,9 @@ export default function HomeScreen() {
               <View style={styles.analysisModalHeader}>
                 <View style={styles.analysisModalHeading}>
                   <Text style={styles.analysisModalTitle}>{getAnalysisTitle(activeAnalysisType)}</Text>
-                  {activeAnalysisNote && (
+                  {resolvedActiveNote && (
                     <Text style={styles.analysisModalSubtitle}>
-                      {activeAnalysisNote.title || `Recorded ${formatDate(activeAnalysisNote.createdAt)}`}
+                      {resolvedActiveNote.title || `Recorded ${formatDate(resolvedActiveNote.createdAt)}`}
                     </Text>
                   )}
                 </View>
@@ -1002,27 +1085,46 @@ export default function HomeScreen() {
               </View>
 
               <View style={styles.analysisModalBody}>
-                {activeAnalysisNote && activeAnalysisType === "wordCloud" && (
-                  <WordCloudView wordCloudData={generateWordCloud(activeAnalysisNote.transcription, 40)} />
+                {resolvedActiveNote && activeAnalysisType === "wordCloud" && (
+                  <WordCloudView wordCloudData={generateWordCloud(resolvedActiveNote.transcription, 40)} />
                 )}
 
-                {activeAnalysisNote && activeAnalysisType === "sentiment" && (
+                {resolvedActiveNote && activeAnalysisType === "sentiment" && (
                   <SentimentAnalysisView
-                    analysis={analyzeSentiment(activeAnalysisNote.transcription)}
-                    notes={[activeAnalysisNote]}
+                    analysis={analyzeSentiment(resolvedActiveNote.transcription)}
+                    notes={[resolvedActiveNote]}
                   />
                 )}
 
-                {activeAnalysisNote && activeAnalysisType === "fillerWords" && (
-                  <FillerWordView analysis={analyzeFillerWords(activeAnalysisNote.transcription)} />
+                {resolvedActiveNote && activeAnalysisType === "fillerWords" && (
+                  <FillerWordView analysis={analyzeFillerWords(resolvedActiveNote.transcription)} />
                 )}
 
-                {activeAnalysisNote && activeAnalysisType === "speakers" && (
-                  <View style={styles.speakersContainer}>
-                    <Text style={styles.speakersTranscript}>
-                      {activeAnalysisNote.transcription}
-                    </Text>
-                  </View>
+                {resolvedActiveNote && activeAnalysisType === "speakers" && (
+                  <>
+                    <SpeakerDiarizationView
+                      speakers={resolvedActiveNote.speakerSegments || []}
+                      speakerCount={
+                        resolvedActiveNote.speakerCount ||
+                        (resolvedActiveNote.speakerSegments
+                          ? new Set(resolvedActiveNote.speakerSegments.map((s) => s.speaker)).size
+                          : 0)
+                      }
+                      isLoading={isDiarizing || resolvedActiveNote.diarizationStatus === "processing"}
+                    />
+
+                    {diarizationError && (
+                      <View style={styles.analysisErrorBox}>
+                        <Text style={styles.analysisErrorText}>{diarizationError}</Text>
+                        <TouchableOpacity
+                          style={styles.retryButton}
+                          onPress={() => ensureDiarization(resolvedActiveNote)}
+                        >
+                          <Text style={styles.retryButtonText}>Retry</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </>
                 )}
               </View>
             </View>
@@ -1478,15 +1580,30 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingBottom: 12,
   },
-  speakersContainer: {
-    flex: 1,
-    paddingHorizontal: 12,
+  analysisErrorBox: {
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: "rgba(239, 68, 68, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(239, 68, 68, 0.32)",
   },
-  speakersTranscript: {
-    fontSize: 14,
-    lineHeight: 22,
-    color: "#E2E8F0",
-    fontFamily: "Menlo",
+  analysisErrorText: {
+    color: "#FCA5A5",
+    fontSize: 13,
+    marginBottom: 8,
+  },
+  retryButton: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: "#EF4444",
+  },
+  retryButtonText: {
+    color: "#FFFFFF",
+    fontWeight: "700",
+    fontSize: 12,
   },
   tagsContainer: {
     flexDirection: "row",
