@@ -33,13 +33,23 @@ export interface SpeakerDiarizationResult {
   transcript: string;
 }
 
-const parseSpeakerId = (value: number | string | undefined, fallback: number): number => {
+const parseSpeakerId = (value: number | string | undefined): number => {
   if (typeof value === 'number') return value;
   if (typeof value === 'string') {
-    const match = value.match(/(\d+)/);
-    if (match) return parseInt(match[1], 10);
+    // Handle "A", "B", "C" format → 0, 1, 2
+    if (value.length === 1 && /^[A-Z]$/.test(value)) {
+      return value.charCodeAt(0) - 65;
+    }
+    // Handle "SPEAKER A", "SPEAKER B" format
+    const letterMatch = value.match(/[A-Z]$/);
+    if (letterMatch) {
+      return letterMatch[0].charCodeAt(0) - 65;
+    }
+    // Handle numeric strings like "0", "1", "2"
+    const numMatch = value.match(/(\d+)/);
+    if (numMatch) return parseInt(numMatch[1], 10);
   }
-  return fallback;
+  return 0; // default to speaker 0, not modulo fallback
 };
 
 const averageConfidence = (words?: AssemblyWord[]): number | undefined => {
@@ -108,8 +118,8 @@ export const diarizeWithAssemblyAI = async (
     throw new Error(pollData.error || 'AssemblyAI diarization failed');
   }
 
-  const segments: SpeakerSegment[] = (pollData.utterances || []).map((utterance, index) => ({
-    speaker: parseSpeakerId(utterance.speaker, index % 8),
+  const segments: SpeakerSegment[] = (pollData.utterances || []).map((utterance) => ({
+    speaker: parseSpeakerId(utterance.speaker),
     startTime: utterance.start ?? 0,
     endTime: utterance.end ?? utterance.start ?? 0,
     text: utterance.text || '',
