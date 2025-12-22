@@ -4,8 +4,8 @@
  * and generates word cloud data for visualization
  */
 
-// Comprehensive stop words set (150+ common English words)
-const STOP_WORDS = new Set([
+// Stop words per language
+const STOP_WORDS_EN = new Set([
   'a', 'about', 'above', 'after', 'again', 'against', 'all', 'am', 'an', 'and',
   'any', 'are', 'as', 'at', 'be', 'because', 'been', 'before', 'being', 'below',
   'between', 'both', 'but', 'by', 'can', 'could', 'did', 'do', 'does', 'doing',
@@ -22,6 +22,16 @@ const STOP_WORDS = new Set([
   'really', 'basically', 'actually', 'sort of', 'kind of', 'just', 'well', 'right',
   'though', 'thing', 'things', 'said', 'say', 'says', 'etc', 'etc.', 'mr', 'mrs',
 ]);
+
+// Minimal Hindi stop words (expand as needed)
+const STOP_WORDS_HI = new Set([
+  'है', 'हैं', 'और', 'मैं', 'हम', 'यह', 'वह', 'के', 'का', 'की', 'में', 'से', 'पर', 'कि', 'को', 'ये', 'जो'
+]);
+
+const STOP_WORDS_MAP: { [lang: string]: Set<string> } = {
+  en: STOP_WORDS_EN,
+  hi: STOP_WORDS_HI,
+};
 
 export interface WordCloudItem {
   word: string;
@@ -40,22 +50,28 @@ export interface WordCloudData {
 /**
  * Extract and clean words from text
  */
-const tokenizeText = (text: string): string[] => {
+const tokenizeText = (text: string, language: string = 'en'): string[] => {
+  if (!text) return [];
+
+  // Use Unicode-aware regex to keep letters from any language (\p{L})
+  const minLen = language === 'en' ? 3 : 1; // allow shorter words for non-Latin scripts
   return text
     .toLowerCase()
     .split(/\s+/)
-    .map(word => word.replace(/[^\w'-]/g, '')) // Remove punctuation
-    .filter(word => word.length > 2); // Only words with 3+ characters
+    .map(word => word.replace(/[^[\p{L}'-]+/gu, '')) // Keep Unicode letters, apostrophes, hyphens
+    .map(word => word.trim())
+    .filter(word => word.length >= minLen);
 };
 
 /**
  * Count word frequencies
  */
-const calculateWordFrequency = (words: string[]): Map<string, number> => {
+const calculateWordFrequency = (words: string[], language: string = 'en'): Map<string, number> => {
   const frequency = new Map<string, number>();
+  const stopWords = STOP_WORDS_MAP[language] || new Set<string>();
 
   for (const word of words) {
-    if (!STOP_WORDS.has(word)) {
+    if (!stopWords.has(word)) {
       frequency.set(word, (frequency.get(word) || 0) + 1);
     }
   }
@@ -70,6 +86,8 @@ const normalizeToSizeScale = (
   frequency: Map<string, number>
 ): Map<string, number> => {
   const frequencies = Array.from(frequency.values());
+  if (frequencies.length === 0) return new Map<string, number>();
+
   const maxFreq = Math.max(...frequencies);
   const minFreq = Math.min(...frequencies);
   const range = maxFreq - minFreq || 1;
@@ -98,11 +116,13 @@ const generateColor = (size: number): string => {
  */
 export const generateWordCloud = (
   text: string,
-  maxWords: number = 30
+  maxWords: number = 30,
+  language: string = 'en'
 ): WordCloudData => {
   try {
-    const words = tokenizeText(text);
-    const frequency = calculateWordFrequency(words);
+    console.log('[WordCloud] Generating word cloud for language:', language);
+    const words = tokenizeText(text, language);
+    const frequency = calculateWordFrequency(words, language);
 
     // Sort by frequency and get top N words
     const sortedWords = Array.from(frequency.entries())
@@ -188,7 +208,8 @@ export const extractTopics = (wordCloudData: WordCloudData): string[] => {
 /**
  * Check if text has sufficient content for word cloud
  */
-export const hasEnoughContentForWordCloud = (text: string): boolean => {
-  const words = tokenizeText(text);
-  return words.length >= 20; // At least 20 meaningful words
+export const hasEnoughContentForWordCloud = (text: string, language: string = 'en'): boolean => {
+  const words = tokenizeText(text, language);
+  const threshold = language === 'en' ? 20 : 10; // allow smaller threshold for other languages
+  return words.length >= threshold; // At least threshold meaningful words
 };

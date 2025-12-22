@@ -50,11 +50,11 @@ export interface SummaryInfo {
  * Sentence tokenization
  */
 const tokenizeSentences = (text: string): string[] => {
-  // Split by common sentence endings
+  // Split by common sentence endings and newlines
   const sentences = text
-    .split(/(?<=[.!?])\s+/)
-    .filter(s => s.trim().length > 10) // Filter very short sentences
-    .map(s => s.trim());
+    .split(/(?<=[.!?\n])\s+/)
+    .map(s => s.trim())
+    .filter(s => s.length > 0);
   
   return sentences;
 };
@@ -129,11 +129,40 @@ const calculateSentenceScore = (
 };
 
 /**
+ * Convert a sentence into a term-frequency map (filtered)
+ */
+const sentenceToVector = (sentence: string): Map<string, number> => {
+  const words = tokenizeWords(sentence).filter(w => !STOP_WORDS.has(w));
+  const m = new Map<string, number>();
+  for (const w of words) m.set(w, (m.get(w) || 0) + 1);
+  return m;
+};
+
+/**
+ * Cosine similarity between two term-frequency maps
+ */
+const cosineSimilarity = (a: Map<string, number>, b: Map<string, number>): number => {
+  let dot = 0;
+  let na = 0;
+  let nb = 0;
+
+  for (const [k, va] of a.entries()) {
+    na += va * va;
+    const vb = b.get(k) || 0;
+    dot += va * vb;
+  }
+  for (const vb of b.values()) nb += vb * vb;
+
+  if (na === 0 || nb === 0) return 0;
+  return dot / (Math.sqrt(na) * Math.sqrt(nb));
+};
+
+/**
  * Generate a quick 2-3 sentence summary
  */
 export const generateSummary = (
   text: string,
-  targetSentences: number = 2
+  targetSentences: number = 3
 ): SummaryInfo => {
   const sentences = tokenizeSentences(text);
   
@@ -149,7 +178,7 @@ export const generateSummary = (
   // If text has fewer sentences than target, return all
   if (sentences.length <= targetSentences) {
     return {
-      summary: sentences.join(' '),
+      summary: sentences.join('\n'),
       sentences,
       wordCount: tokenizeWords(text).length,
       generatedAt: Date.now(),
@@ -159,25 +188,51 @@ export const generateSummary = (
   // Calculate word frequency for scoring
   const wordFrequency = calculateWordFrequency(text);
   
-  // Score each sentence
+  // Score each sentence (frequency-based)
   const scoredSentences = sentences.map((sentence, index) => ({
     sentence,
-    score: calculateSentenceScore(sentence, wordFrequency, index, sentences.length),
+    freqScore: calculateSentenceScore(sentence, wordFrequency, index, sentences.length),
+    vec: sentenceToVector(sentence),
     originalIndex: index,
   }));
-  
-  // Select top sentences by score
-  const topSentences = scoredSentences
-    .sort((a, b) => b.score - a.score)
-    .slice(0, targetSentences)
-    .sort((a, b) => a.originalIndex - b.originalIndex) // Restore original order
+
+  // Build similarity (centrality) scores
+  const centrality: number[] = new Array(sentences.length).fill(0);
+  for (let i = 0; i < scoredSentences.length; i++) {
+    for (let j = 0; j < scoredSentences.length; j++) {
+      if (i === j) continue;
+      const sim = cosineSimilarity(scoredSentences[i].vec, scoredSentences[j].vec);
+      centrality[i] += sim;
+    }
+  }
+
+  // Normalize freqScore and centrality
+  const freqScores = scoredSentences.map(s => s.freqScore);
+  const maxFreq = Math.max(...freqScores) || 1;
+  const minFreq = Math.min(...freqScores) || 0;
+
+  const maxCentral = Math.max(...centrality) || 1;
+  const minCentral = Math.min(...centrality) || 0;
+
+  const finalScores = scoredSentences.map((s, i) => {
+    const normFreq = (s.freqScore - minFreq) / (maxFreq - minFreq || 1);
+    const normCentral = (centrality[i] - minCentral) / (maxCentral - minCentral || 1);
+    // Combine: give more weight to centrality and freq (balanced)
+    const combined = 0.55 * normFreq + 0.45 * normCentral;
+    return { sentence: s.sentence, score: combined, originalIndex: s.originalIndex };
+  });
+
+  // Select top N sentences, then restore original order
+  const top = finalScores.sort((a, b) => b.score - a.score).slice(0, targetSentences)
+    .sort((a, b) => a.originalIndex - b.originalIndex)
     .map(s => s.sentence);
-  
-  const summary = topSentences.join(' ');
-  
+
+  // Join with newlines to create 3-line summary
+  const summary = top.join('\n');
+
   return {
     summary,
-    sentences: topSentences,
+    sentences: top,
     wordCount: tokenizeWords(text).length,
     generatedAt: Date.now(),
   };

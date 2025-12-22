@@ -110,6 +110,26 @@ Uses transcription API:
 - **Method:** POST (multipart/form-data)
 - **Response:** Transcribed text + detected language
 
+### Gemini (Optional) — Remote Summarization
+To enable remote summarization with Gemini, set the following environment variables in your development environment or in EAS secrets:
+
+- `EXPO_PUBLIC_GEMINI_MODEL` — (Optional) set a Gemini model name (e.g. `gemini-2.5-flash`). When set, the app will call the Google GenAI endpoint by default.
+- `EXPO_PUBLIC_GEMINI_API_KEY` — API key for Gemini (for Google GenAI use your Google API key and it will be sent in `x-goog-api-key`).
+- `EXPO_PUBLIC_GEMINI_API_URL` — (Optional) full custom endpoint URL if you use a non-Google Gemini endpoint that expects `Authorization: Bearer <key>` (uncomment to use)
+
+The app uses these values to request a 3-line summary when saving a note. If either value is missing, the app falls back to the local summarizer.
+
+Example cURL (replace values):
+
+```bash
+curl -X POST "https://your.gemini.endpoint/summarize" \
+  -H "Authorization: Bearer YOUR_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt":"Summarize the following text in 3 short sentences:\n\n<YOUR TRANSCRIPT HERE>","max_tokens":256}'
+```
+
+If your Gemini endpoint uses a different request/response shape, update `utils/gemini.ts` accordingly.
+
 ## 🧠 State Management
 
 The app uses React Context for global state management through `NotesContext`:

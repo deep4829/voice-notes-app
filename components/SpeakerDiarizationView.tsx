@@ -73,7 +73,7 @@ const SpeakerDiarizationView: React.FC<SpeakerDiarizationViewProps> = ({
               <View style={styles.segmentHeader}>
                 <View style={[styles.speakerBadge, { backgroundColor: getSpeakerColor(segment.speaker) }]}>
                   <Text style={styles.speakerBadgeText}>
-                    Speaker {segment.speaker + 1}
+                    Speaker {segment.speaker}
                   </Text>
                 </View>
                 <View style={styles.confidenceContainer}>

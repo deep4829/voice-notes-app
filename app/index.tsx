@@ -10,6 +10,7 @@ import {
   Alert,
   Modal,
   TextInput,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Audio } from "expo-av";
@@ -35,7 +36,7 @@ import SentimentAnalysisView from "@/components/SentimentAnalysisView";
 import { analyzeFillerWords } from "@/utils/fillerWordRemoval";
 import FillerWordView from "@/components/FillerWordView";
 import SpeakerDiarizationView from "@/components/SpeakerDiarizationView";
-import { diarizeWithAssemblyAI } from "@/utils/speakerDiarization";
+import { diarizeWithSpeechmatics } from "@/utils/speakerDiarization";
 
 type AnalysisType = "wordCloud" | "sentiment" | "fillerWords" | "speakers";
 
@@ -68,7 +69,7 @@ export default function HomeScreen() {
   const [isDiarizing, setIsDiarizing] = useState(false);
   const [diarizationError, setDiarizationError] = useState<string | null>(null);
 
-  const assemblyApiKey = process.env.EXPO_PUBLIC_ASSEMBLYAI_API_KEY || "";
+  const speechmaticsApiKey = process.env.EXPO_PUBLIC_SPEECHMATICS_API_KEY || "";
 
   const resolvedActiveNote = activeAnalysisNote
     ? notes.find((n) => n.id === activeAnalysisNote.id) ?? activeAnalysisNote
@@ -111,8 +112,8 @@ export default function HomeScreen() {
   };
 
   const ensureDiarization = useCallback(async (note: Note) => {
-    if (!assemblyApiKey) {
-      setDiarizationError("AssemblyAI API key missing");
+    if (!speechmaticsApiKey) {
+      setDiarizationError("Speechmatics API key missing");
       return;
     }
 
@@ -126,7 +127,7 @@ export default function HomeScreen() {
     updateNote(note.id, { diarizationStatus: "processing", diarizationError: undefined });
 
     try {
-      const result = await diarizeWithAssemblyAI(note.audioUri, assemblyApiKey);
+      const result = await diarizeWithSpeechmatics(note.audioUri, speechmaticsApiKey, note.language || 'en');
       updateNote(note.id, {
         speakerSegments: result.segments,
         speakerCount: result.speakerCount,
@@ -141,7 +142,7 @@ export default function HomeScreen() {
     } finally {
       setIsDiarizing(false);
     }
-  }, [assemblyApiKey, updateNote]);
+  }, [speechmaticsApiKey, updateNote]);
 
   useEffect(() => {
     if (!analysisModalVisible || activeAnalysisType !== "speakers" || !resolvedActiveNote) {
@@ -366,8 +367,10 @@ export default function HomeScreen() {
     }
   };
 
+  const [isSummarizing, setIsSummarizing] = useState(false);
+
   const saveTitleAndNote = async () => {
-    if (!titleInput.trim()) {
+    setIsSummarizing(true);    if (!titleInput.trim()) {
       Alert.alert("Error", "Please enter a title");
       return;
     }
@@ -380,12 +383,33 @@ export default function HomeScreen() {
     // Generate automatic tags from transcription
     const tags = generateTags(pendingTranscription);
     
-    // Generate summary from transcription
-    const summaryInfo = generateSummary(pendingTranscription, 2);
+    // Generate summary from transcription (prefer Gemini if available)
+    let summaryText = '';
+    try {
+      const geminiApiUrl = process.env.EXPO_PUBLIC_GEMINI_API_URL || '';
+      const geminiApiKey = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
+      if (geminiApiUrl && geminiApiKey) {
+        // dynamic import to avoid bundling if not needed
+        const { summarizeWithGemini } = await import('@/utils/gemini');
+        const geminiResult = await summarizeWithGemini(pendingTranscription, 3, pendingLanguage || 'en');
+        summaryText = geminiResult.replace(/\r/g, '').trim();
+      } else {
+        const summaryInfo = generateSummary(pendingTranscription, 3);
+        summaryText = summaryInfo.summary;
+      }
+    } catch (err: any) {
+      // Show a clear alert to the user and fall back locally
+      const msg = err?.message || String(err);
+      console.warn('[Save] Gemini summarization failed, falling back to local summary:', msg);
+      Alert.alert('Summarization failed', `${msg}\nFalling back to local summary.`);
+      const summaryInfo = generateSummary(pendingTranscription, 3);
+      summaryText = summaryInfo.summary;
+    } finally {
+      setIsSummarizing(false);
+    }
 
     const noteId = Date.now().toString();
-    const newNote: Note = {
-      id: noteId,
+    const newNote: Note = {      id: noteId,
       title: titleInput.trim(),
       transcription: pendingTranscription,
       audioUri: pendingRecordingUri,
@@ -393,7 +417,7 @@ export default function HomeScreen() {
       createdAt: Date.now(),
       language: pendingLanguage,
       tags: tags,
-      summary: summaryInfo.summary,
+      summary: summaryText,
     };
 
     addNote(newNote);
@@ -732,7 +756,7 @@ export default function HomeScreen() {
                             )}
                             <Text style={styles.noteDate}>{formatDate(note.createdAt)}</Text>
                             {note.summary && (
-                              <Text style={styles.noteSummary} numberOfLines={2}>
+                              <Text style={styles.noteSummary} numberOfLines={3}>
                                 {note.summary}
                               </Text>
                             )}
@@ -912,7 +936,7 @@ export default function HomeScreen() {
                       )}
                       <Text style={styles.noteDate}>{formatDate(note.createdAt)}</Text>
                       {note.summary && (
-                        <Text style={styles.noteSummary} numberOfLines={2}>
+                        <Text style={styles.noteSummary} numberOfLines={3}>
                           {note.summary}
                         </Text>
                       )}
@@ -1043,17 +1067,23 @@ export default function HomeScreen() {
               />
               <View style={styles.modalButtons}>
                 <TouchableOpacity
-                  style={styles.modalButton}
+                  style={[styles.modalButton, isSummarizing && styles.modalButtonDisabled]}
                   onPress={saveTitleAndNote}
+                  disabled={isSummarizing}
                 >
-                  <Text style={styles.modalButtonText}>Save</Text>
+                  {isSummarizing ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={styles.modalButtonText}>Save</Text>
+                  )}
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.modalButton, styles.modalButtonCancel]}
+                  style={[styles.modalButton, styles.modalButtonCancel, isSummarizing && styles.modalButtonDisabled]}
                   onPress={() => {
                     setShowTitleInput(false);
                     setPendingRecordingUri(null);
                   }}
+                  disabled={isSummarizing}
                 >
                   <Text style={styles.modalButtonTextCancel}>Cancel</Text>
                 </TouchableOpacity>
@@ -1086,7 +1116,7 @@ export default function HomeScreen() {
 
               <View style={styles.analysisModalBody}>
                 {resolvedActiveNote && activeAnalysisType === "wordCloud" && (
-                  <WordCloudView wordCloudData={generateWordCloud(resolvedActiveNote.transcription, 40)} />
+                  <WordCloudView wordCloudData={generateWordCloud(resolvedActiveNote.transcription, 40, resolvedActiveNote.language || 'en')} />
                 )}
 
                 {resolvedActiveNote && activeAnalysisType === "sentiment" && (
@@ -1279,11 +1309,11 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   noteSummary: {
-    fontSize: 13,
-    color: "#CBD5E1",
-    fontStyle: "italic",
-    lineHeight: 18,
-    marginBottom: 6,
+    lineHeight: 20,
+    color: "#FFFFFF",
+  },
+  modalButtonDisabled: {
+    opacity: 0.6,
   },
   noteActions: {
     flexDirection: "row",
